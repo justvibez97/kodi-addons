@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings>
+    <category label="Account">
+        <setting id="username" type="text" label="Letterboxd Username" default="" />
+        <setting id="password" type="text" label="Password" option="hidden" default="" />
+    </category>
+    <category label="Playback">
+        <setting id="tmdb_api_key" type="text" label="TMDB API Key" default="" />
+        <setting id="omdb_api_key" type="text" label="OMDb API Key" default="" />
+        <setting id="player" type="text" label="Player Add-on ID" default="plugin.video.umbrella" />
+        <setting id="page_size" type="slider" label="Films Per Page" default="20" range="10,10,100" option="int" />
+    </category>
+    <category label="Filters">
+        <setting id="hide_watched" type="enum" label="Watched status from"
+                 values="Off|Trakt|Letterboxd" default="0" />
+    </category>
+    <category label="Advanced (Optional)">
+        <setting id="use_api" type="bool" label="Enable Letterboxd API" default="false" />
+        <setting id="api_key" type="text" label="Letterboxd API Key" default="" enable="eq(-1,true)" />
+        <setting id="api_secret" type="text" label="Letterboxd API Secret" option="hidden" default="" enable="eq(-2,true)" />
+    </category>
+</settings>

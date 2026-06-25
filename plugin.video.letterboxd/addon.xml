@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="plugin.video.letterboxd"
+       name="Letterboxd"
+       version="1.0.0"
+       provider-name="user">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+        <import addon="script.module.requests" version="2.9.1"/>
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="default.py">
+        <provides>video</provides>
+    </extension>
+    <extension point="xbmc.service" library="service.py" />
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Browse your Letterboxd account in Kodi</summary>
+        <description lang="en_GB">Browse your Letterboxd watchlist, diary, and custom lists directly inside Kodi. Works with just a username (via RSS) or with an official API key for richer data and private lists.</description>
+        <disclaimer lang="en_GB">A Letterboxd account is required. API credentials are optional but enable private list access and password-based login.</disclaimer>
+        <platform>all</platform>
+        <license>MIT</license>
+        <website>https://letterboxd.com</website>
+    </extension>
+</addon>
