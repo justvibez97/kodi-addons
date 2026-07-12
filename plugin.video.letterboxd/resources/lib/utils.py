@@ -39,8 +39,7 @@ def add_film_item(handle, film, base_url, mode="play", direct_url=None):
     Add a film item to the Kodi directory listing.
 
     If *direct_url* is supplied the item URL is set to that value directly
-    (e.g. a pre-built plugin://plugin.video.umbrella/? URL), bypassing the
-    intermediate play handler and avoiding the IsPlayable+RunPlugin conflict.
+    (e.g. a pre-built plugin://plugin.video.umbrella/? URL).
     """
     name = film.get("name") or "Unknown"
     year = str(film.get("year") or "")
@@ -123,11 +122,11 @@ def add_film_item(handle, film, base_url, mode="play", direct_url=None):
         # Letterboxd 0.5–5.0 → ×2 for 0–10 scale alongside IMDb/TMDB
         li.setRating("letterboxd", float(lb_community) * 2, int(lb_rating_count))
 
-    # Not IsPlayable — route through our play handler which calls RunPlugin(Umbrella).
-    # Umbrella then runs in its own plugin context and resolves streams correctly.
-    # Direct IsPlayable+plugin URL puts Kodi in resolver mode with our handle;
-    # Umbrella can't reliably call setResolvedUrl back to it → hit-or-miss playback.
-    li.setProperty("IsPlayable", "false")
+    # IsPlayable creates a proper video-resolver context for the target URL
+    # (same as PlayMedia). RunPlugin is fire-and-forget with no resolver —
+    # Umbrella's setResolvedUrl() call after source selection has no listener
+    # and playback silently does nothing. IsPlayable is the correct handoff.
+    li.setProperty("IsPlayable", "true")
 
     if direct_url:
         url = direct_url
