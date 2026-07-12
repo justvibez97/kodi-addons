@@ -182,30 +182,45 @@ def get_trakt_watched_ids():
         _trakt_cache = False
         return frozenset(), frozenset()
 
-    try:
-        resp = requests.get(
-            "https://api.trakt.tv/sync/watched/movies",
-            headers={
-                "Authorization":     f"Bearer {access_token}",
-                "trakt-api-version": "2",
-                "trakt-api-key":     _deobfuscate(_CLIENT_ID_DATA),
-                "Content-Type":      "application/json",
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
+    headers = {
+        "Authorization":     f"Bearer {access_token}",
+        "trakt-api-version": "2",
+        "trakt-api-key":     _deobfuscate(_CLIENT_ID_DATA),
+        "Content-Type":      "application/json",
+    }
 
-        imdb_ids = set()
-        tmdb_ids = set()
-        for entry in resp.json():
-            ids = entry.get("movie", {}).get("ids", {})
-            if ids.get("imdb"):
-                imdb_ids.add(ids["imdb"])
-            if ids.get("tmdb"):
-                tmdb_ids.add(str(ids["tmdb"]))
+    imdb_ids = set()
+    tmdb_ids = set()
+    page = 1
+
+    try:
+        while True:
+            resp = requests.get(
+                "https://api.trakt.tv/sync/watched/movies",
+                headers=headers,
+                params={"limit": 100, "page": page},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            raw = resp.json()
+            if not raw:
+                break
+
+            for entry in raw:
+                ids = entry.get("movie", {}).get("ids", {})
+                if ids.get("imdb"):
+                    imdb_ids.add(ids["imdb"])
+                if ids.get("tmdb"):
+                    tmdb_ids.add(str(ids["tmdb"]))
+
+            total_pages = int(resp.headers.get("X-Pagination-Page-Count", 1))
+            if page >= total_pages:
+                break
+            page += 1
 
         xbmc.log(
-            f"[Letterboxd/watched] Trakt: {len(imdb_ids)} IMDB + {len(tmdb_ids)} TMDB watched IDs loaded.",
+            f"[Letterboxd/watched] Trakt: {len(imdb_ids)} IMDB + {len(tmdb_ids)} TMDB "
+            f"watched IDs loaded across {page} page(s).",
             xbmc.LOGINFO,
         )
         _trakt_cache = frozenset(imdb_ids), frozenset(tmdb_ids)
