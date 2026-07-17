@@ -105,10 +105,23 @@ def main():
     root_zip_path = os.path.join(ROOT, "repo.zip")
     make_zip(repo_stage, root_zip_path, REPO_ID)
 
+    # Wrapper zip: raw.githubusercontent.com has no folder browsing, so
+    # "Add source" must point straight at a .zip URL, and Kodi's VFS then
+    # shows that zip's *unpacked* contents when browsed (repository.letterboxd/
+    # addon.xml) — there is no actual .zip file left to select for "Install
+    # from zip file". Wrapping repo.zip inside install.zip gives the browser
+    # an actual zip file entry to pick, which Kodi can then install correctly.
+    install_zip_path = os.path.join(ROOT, "install.zip")
+    if os.path.exists(install_zip_path):
+        os.remove(install_zip_path)
+    with zipfile.ZipFile(install_zip_path, "w", zipfile.ZIP_STORED) as zf:
+        zf.write(root_zip_path, "repo.zip")
+
     print(f"Built addons.xml (md5={digest})")
     print(f"Built {lb_zip_path}")
     print(f"Built {repo_zip_path}")
     print(f"Built {root_zip_path}")
+    print(f"Built {install_zip_path}")
 
 if __name__ == "__main__":
     main()
