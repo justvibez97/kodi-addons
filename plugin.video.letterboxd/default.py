@@ -3,6 +3,7 @@ plugin.video.letterboxd — main entry point.
 
 URL routing: plugin://plugin.video.letterboxd/?mode=<mode>&<extra params>
 """
+import json
 import sys
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
@@ -131,6 +132,38 @@ def _build_watched_filter():
     return None
 
 
+def _umbrella_meta(film):
+    """
+    Build the 'meta' dict Umbrella expects on its play URL.
+
+    Umbrella's own playItem() calls meta.get('plot') etc. unconditionally in
+    several code paths. Without a meta param (and if its own internal
+    meta lookup fails), meta stays None and every source resolve attempt
+    crashes with AttributeError before ever reaching actual playback — this
+    is also why the source picker showed no poster/plot info.
+    """
+    meta = {
+        "mediatype": "movie",
+        "title":     film.get("name", ""),
+        "year":      film.get("year", ""),
+        "imdb":      film.get("imdb_id", ""),
+        "tmdb":      film.get("tmdb_id", ""),
+        "plot":      film.get("description", ""),
+        "poster":    film.get("poster", ""),
+    }
+    if film.get("imdb_rating") is not None:
+        meta["rating"] = film["imdb_rating"]
+    if film.get("genre"):
+        meta["genre"] = film["genre"]
+    if film.get("director"):
+        meta["director"] = film["director"]
+    if film.get("duration"):
+        meta["duration"] = film["duration"]
+    if film.get("mpaa"):
+        meta["mpaa"] = film["mpaa"]
+    return {k: v for k, v in meta.items() if v not in (None, "")}
+
+
 def _enrich_and_add(films, fetch_lb_rating=True):
     """
     Enrich films with TMDB metadata then add to the directory listing.
@@ -192,6 +225,7 @@ def _enrich_and_add(films, fetch_lb_rating=True):
                 "year":   film_year,
                 "imdb":   imdb_id,
                 "tmdb":   tmdb_id,
+                "meta":   json.dumps(_umbrella_meta(film)),
             }.items() if v}
             direct_url = f"plugin://{player}/?{urllib.parse.urlencode(play_params)}"
             add_film_item(HANDLE, film, BASE_URL, direct_url=direct_url)
@@ -691,10 +725,11 @@ def play_film():
     player = get_setting("player").strip() or "plugin.video.umbrella"
 
     # If we don't have IDs yet, look them up via TMDB
+    data = {}
     if (not tmdb_id or not imdb_id) and film_name:
         tmdb = get_tmdb()
         if tmdb.api_key:
-            data = tmdb._search(film_name, film_year)
+            data = tmdb._search(film_name, film_year) or {}
             if data:
                 tmdb_id = tmdb_id or data.get("tmdb_id", "")
                 imdb_id = imdb_id or data.get("imdb_id", "")
@@ -704,8 +739,10 @@ def play_film():
         notify_error("Playback error", "No film information available.")
         return
 
-    title_enc = urllib.parse.quote(film_name)
-    year_enc = urllib.parse.quote(film_year)
+    meta = _umbrella_meta({
+        "name": film_name, "year": film_year, "imdb_id": imdb_id, "tmdb_id": tmdb_id,
+        "description": data.get("description", ""), "poster": data.get("poster", ""),
+    })
 
     # Build Umbrella's play URL — same parameters Umbrella uses internally
     play_params = urllib.parse.urlencode({
@@ -715,6 +752,7 @@ def play_film():
             "year": film_year,
             "imdb": imdb_id,
             "tmdb": tmdb_id,
+            "meta": json.dumps(meta),
         }.items() if v
     })
     umbrella_url = f"plugin://{player}/?{play_params}"
