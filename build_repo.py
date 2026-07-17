@@ -117,11 +117,23 @@ def main():
     with zipfile.ZipFile(install_zip_path, "w", zipfile.ZIP_STORED) as zf:
         zf.write(root_zip_path, "repo.zip")
 
+    # Same wrapper trick, but for the addon itself — a guaranteed-fresh,
+    # direct "Install from zip file" path that bypasses Kodi's repository
+    # browser entirely (which can show a cached listing rather than
+    # live-fetching on every browse). Always reflects whatever version is
+    # currently in plugin.video.letterboxd/addon.xml.
+    update_zip_path = os.path.join(ROOT, "update.zip")
+    if os.path.exists(update_zip_path):
+        os.remove(update_zip_path)
+    with zipfile.ZipFile(update_zip_path, "w", zipfile.ZIP_STORED) as zf:
+        zf.write(lb_zip_path, os.path.basename(lb_zip_path))
+
     print(f"Built addons.xml (md5={digest})")
     print(f"Built {lb_zip_path}")
     print(f"Built {repo_zip_path}")
     print(f"Built {root_zip_path}")
     print(f"Built {install_zip_path}")
+    print(f"Built {update_zip_path}")
 
 if __name__ == "__main__":
     main()
