@@ -176,13 +176,29 @@ def _enrich_and_add(films, fetch_lb_rating=True):
     with ThreadPoolExecutor(max_workers=5) as executor:
         enriched = list(executor.map(_enrich_one, films))
 
-    # Route every item through our own play handler (mode=play), which
-    # calls RunPlugin(Umbrella) explicitly. Umbrella manages its own
-    # playback internally (custom Player class) rather than Kodi's
-    # setResolvedUrl protocol, so no IsPlayable/direct-URL resolver context
-    # should be created — see the note in utils.add_film_item().
+    # Direct IsPlayable URL straight to Umbrella — required so the resolving
+    # handle Kodi opens for this click belongs to Umbrella's own invocation.
+    # See the note in utils.add_film_item() for why.
     for film in enriched:
-        add_film_item(HANDLE, film, BASE_URL)
+        film_name = film.get("name", "")
+        film_year = str(film.get("year") or "")
+        imdb_id   = film.get("imdb_id", "")
+        tmdb_id   = film.get("tmdb_id", "")
+
+        if film_name:
+            play_params = {k: v for k, v in {
+                "action": "play",
+                "title":  film_name,
+                "year":   film_year,
+                "imdb":   imdb_id,
+                "tmdb":   tmdb_id,
+            }.items() if v}
+            direct_url = f"plugin://{player}/?{urllib.parse.urlencode(play_params)}"
+            add_film_item(HANDLE, film, BASE_URL, direct_url=direct_url)
+        else:
+            # No title yet — fall back to our own play handler, which looks
+            # up TMDB/IMDB IDs before handing off to Umbrella.
+            add_film_item(HANDLE, film, BASE_URL)
 
 
 # ---------------------------------------------------------------------------
@@ -660,27 +676,13 @@ def play_film():
     Flow:
       1. Use TMDB/IMDB IDs passed in the URL if already known.
       2. If only title+year are known, query TMDB now (one call, cached).
-      3. Invoke Umbrella via ActivateWindow with the IDs.
-
-         Umbrella manages source selection and playback entirely on its own
-         (a custom Player class, not Kodi's setResolvedUrl protocol), and
-         its source picker is a blocking modal GUI dialog. Two things must
-         both be true for this to work:
-           - Umbrella's script needs real GUI/window ownership so its modal
-             dialog receives click input. RunPlugin runs as a background
-             script call and does not reliably give it that (source picker
-             renders but selecting an entry does nothing).
-           - No competing Kodi resolver/playlist context should be created,
-             since Umbrella never calls setResolvedUrl(). Marking our own
-             ListItem IsPlayable (or using PlayMedia) makes Kodi treat the
-             click as a 1-item playlist waiting on that callback; when it
-             never comes, Kodi's playlist player concludes the item is
-             unplayable and tears down whatever Umbrella had just started
-             playing via its own Player class ("skipping unplayable item").
-         ActivateWindow satisfies both: it navigates the Videos window into
-         Umbrella's own plugin context (giving it full GUI ownership, and
-         incidentally making Umbrella's own Container.PluginName checks
-         pass) without registering a resolving/playlist slot on our side.
+      3. Invoke Umbrella via PlayMedia — confirmed by reading Umbrella's own
+         source (resources/lib/modules/player.py) that its play flow ends
+         with control.resolve(int(sys.argv[1]), True, item), i.e.
+         xbmcplugin.setResolvedUrl on ITS OWN invocation's handle. PlayMedia
+         opens a genuine resolving context for the target URL so that handle
+         actually exists; RunPlugin/ActivateWindow don't create one, making
+         that call a silent no-op.
     """
     tmdb_id = param("tmdb_id", "")
     imdb_id = param("imdb_id", "")
@@ -718,7 +720,7 @@ def play_film():
     umbrella_url = f"plugin://{player}/?{play_params}"
 
     log(f"Invoking player: {umbrella_url}")
-    xbmc.executebuiltin(f'ActivateWindow(10025,"{umbrella_url}",return)')
+    xbmc.executebuiltin(f'PlayMedia("{umbrella_url}")')
 
 
 # ---------------------------------------------------------------------------

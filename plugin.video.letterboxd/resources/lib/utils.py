@@ -122,15 +122,17 @@ def add_film_item(handle, film, base_url, mode="play", direct_url=None):
         # Letterboxd 0.5–5.0 → ×2 for 0–10 scale alongside IMDb/TMDB
         li.setRating("letterboxd", float(lb_community) * 2, int(lb_rating_count))
 
-    # Not IsPlayable. Umbrella manages playback itself via its own custom
-    # Player class (xbmc.Player().play_source(...)) inside its source-picker
-    # dialog — it never calls xbmcplugin.setResolvedUrl(). If we mark this
-    # item IsPlayable, Kodi opens its own resolving/playlist slot expecting
-    # that callback; when it never comes, Kodi's playlist player concludes
-    # the item is unplayable and tears down whatever Umbrella just started
-    # playing ("skipping unplayable item"). RunPlugin avoids creating that
-    # competing resolver context entirely.
-    li.setProperty("IsPlayable", "false")
+    # IsPlayable=true is required: confirmed by reading Umbrella's own source
+    # (resources/lib/modules/player.py), its play flow ends by calling
+    # control.resolve(int(sys.argv[1]), True, item) — which IS
+    # xbmcplugin.setResolvedUrl on THIS INVOCATION's own handle. That only
+    # exists when Kodi opens a genuine resolving context (IsPlayable click
+    # or PlayMedia); RunPlugin/ActivateWindow never create one, so that call
+    # is a silent no-op under those methods. The URL must also point
+    # directly at Umbrella (not hop through our own play handler first),
+    # since the resolving handle belongs to whichever invocation Kodi
+    # actually opened the resolver for.
+    li.setProperty("IsPlayable", "true")
 
     if direct_url:
         url = direct_url
