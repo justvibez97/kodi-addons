@@ -660,11 +660,27 @@ def play_film():
     Flow:
       1. Use TMDB/IMDB IDs passed in the URL if already known.
       2. If only title+year are known, query TMDB now (one call, cached).
-      3. Invoke Umbrella via RunPlugin with the IDs — identical to clicking
-         a title inside Umbrella itself. Umbrella manages source selection
-         and playback entirely on its own (custom Player class, not Kodi's
-         setResolvedUrl protocol), so no Kodi resolver context should be
-         created here — RunPlugin is fire-and-forget, which is correct.
+      3. Invoke Umbrella via ActivateWindow with the IDs.
+
+         Umbrella manages source selection and playback entirely on its own
+         (a custom Player class, not Kodi's setResolvedUrl protocol), and
+         its source picker is a blocking modal GUI dialog. Two things must
+         both be true for this to work:
+           - Umbrella's script needs real GUI/window ownership so its modal
+             dialog receives click input. RunPlugin runs as a background
+             script call and does not reliably give it that (source picker
+             renders but selecting an entry does nothing).
+           - No competing Kodi resolver/playlist context should be created,
+             since Umbrella never calls setResolvedUrl(). Marking our own
+             ListItem IsPlayable (or using PlayMedia) makes Kodi treat the
+             click as a 1-item playlist waiting on that callback; when it
+             never comes, Kodi's playlist player concludes the item is
+             unplayable and tears down whatever Umbrella had just started
+             playing via its own Player class ("skipping unplayable item").
+         ActivateWindow satisfies both: it navigates the Videos window into
+         Umbrella's own plugin context (giving it full GUI ownership, and
+         incidentally making Umbrella's own Container.PluginName checks
+         pass) without registering a resolving/playlist slot on our side.
     """
     tmdb_id = param("tmdb_id", "")
     imdb_id = param("imdb_id", "")
@@ -702,7 +718,7 @@ def play_film():
     umbrella_url = f"plugin://{player}/?{play_params}"
 
     log(f"Invoking player: {umbrella_url}")
-    xbmc.executebuiltin(f"RunPlugin({umbrella_url})")
+    xbmc.executebuiltin(f'ActivateWindow(10025,"{umbrella_url}",return)')
 
 
 # ---------------------------------------------------------------------------
