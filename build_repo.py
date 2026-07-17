@@ -93,14 +93,22 @@ def main():
     make_zip(LETTERBOXD_SRC, lb_zip_path, lb_id)
 
     # zips/repository.letterboxd/repository.letterboxd-<version>.zip
+    # (this exact path/naming is required by Kodi's own repo-update mechanism)
     repo_zip_dir = os.path.join(ZIPS_DIR, REPO_ID)
     os.makedirs(repo_zip_dir, exist_ok=True)
     repo_zip_path = os.path.join(repo_zip_dir, f"{REPO_ID}-{REPO_VERSION}.zip")
     make_zip(repo_stage, repo_zip_path, REPO_ID)
 
+    # Short-path duplicate at the repo root, purely for a shorter first-time
+    # "Add source" URL. Kodi's own auto-update mechanism uses the zips/ copy
+    # above and never touches this one.
+    root_zip_path = os.path.join(ROOT, "repo.zip")
+    make_zip(repo_stage, root_zip_path, REPO_ID)
+
     print(f"Built addons.xml (md5={digest})")
     print(f"Built {lb_zip_path}")
     print(f"Built {repo_zip_path}")
+    print(f"Built {root_zip_path}")
 
 if __name__ == "__main__":
     main()
