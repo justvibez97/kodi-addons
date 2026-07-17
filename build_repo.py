@@ -11,13 +11,15 @@ ZIPS_DIR = os.path.join(ROOT, "zips")
 REPO_ID = "repository.letterboxd"
 REPO_VERSION = "1.0.0"
 
+_RAW_BASE = "https://raw.githubusercontent.com/justvibez97/kodi-addons/main"
+
 REPO_ADDON_XML = f"""<?xml version="1.0" encoding="UTF-8"?>
 <addon id="{REPO_ID}" name="Letterboxd Repository" version="{REPO_VERSION}" provider-name="justvibez97">
     <extension point="xbmc.addon.repository" name="Letterboxd Repository">
         <dir>
-            <info compressed="false">https://justvibez97.github.io/kodi-addons/addons.xml</info>
-            <checksum>https://justvibez97.github.io/kodi-addons/addons.xml.md5</checksum>
-            <datadir zip="true">https://justvibez97.github.io/kodi-addons/zips</datadir>
+            <info compressed="false">{_RAW_BASE}/addons.xml</info>
+            <checksum>{_RAW_BASE}/addons.xml.md5</checksum>
+            <datadir zip="true">{_RAW_BASE}/zips</datadir>
         </dir>
     </extension>
     <extension point="xbmc.addon.metadata">
