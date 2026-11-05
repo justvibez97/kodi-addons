@@ -559,10 +559,23 @@ def job_label(job):
     return '[COLOR %s][%s][/COLOR]  %s' % (color, tag, job['name']), right
 
 
+def short(name, n=58):
+    """One line in a dialog: long release names would push the status lines out."""
+    return name if len(name) <= n else name[:n - 3].rstrip('.') + '...'
+
+
+def conns_text(job):
+    n = job.get('conns') or 0
+    text = '%d connection%s' % (n, '' if n == 1 else 's')
+    if job.get('retrying'):
+        text += ' (%d retrying)' % job['retrying']
+    return text
+
+
 def job_plot(job):
     lines = [job['name'], '%s of %s' % (common.human_gb(job.get('have', 0)), common.human_gb(job['size']))]
     if job['status'] == 'downloading' and job.get('speed'):
-        lines.append('%s with %d connections' % (common.human_speed(job['speed']), job.get('conns') or 0))
+        lines.append('%s with %s' % (common.human_speed(job['speed']), conns_text(job)))
     if job.get('note'):
         lines.append('[COLOR orange]%s[/COLOR]' % job['note'])
     if job.get('error'):
@@ -700,19 +713,19 @@ def progress_window(job_id=None):
             queued = len([j for j in jobs if j['status'] == 'queued'])
             st = job['status']
             if st == 'done':
-                lines = [job['name'], '[COLOR springgreen]Finished[/COLOR]  ·  %s' % common.human_gb(size),
+                lines = [short(job['name']), '[COLOR springgreen]Finished[/COLOR]  ·  %s' % common.human_gb(size),
                          job['dest']]
                 pct = 100
                 finished_at = finished_at or time.time()
             elif st == 'downloading':
                 speed = job.get('speed') or 0
-                lines = [job['name'],
+                lines = [short(job['name']),
                          '%s of %s  ·  %d%%' % (common.human_gb(have), common.human_gb(size), pct),
-                         ('%s  ·  %d connections  ·  %s left' % (common.human_speed(speed), job.get('conns') or 0,
-                                                                common.human_eta(job.get('eta'))))
-                         if speed else 'Starting...']
+                         ('%s  ·  %s  ·  %s left' % (common.human_speed(speed), conns_text(job),
+                                                    common.human_eta(job.get('eta'))))
+                         if speed else 'Starting...  ·  %s' % conns_text(job)]
             else:
-                lines = [job['name'], '%s  ·  %d%%' % (st.capitalize(), pct), job.get('error') or '']
+                lines = [short(job['name']), '%s  ·  %d%%' % (st.capitalize(), pct), job.get('error') or '']
             if queued and len(lines) >= 3:
                 lines[2] += '  ·  %d more waiting' % queued
             lines = [l for l in lines if l][:3]

@@ -163,3 +163,43 @@ msgstr ""
 msgctxt "#30213"
 msgid "Set by \"Choose download folder...\", which lists USB drives. You can also type a path such as /storage/1A2B-3C4D/Premiumize."
 msgstr ""
+
+msgctxt "#30216"
+msgid "Speed limit"
+msgstr ""
+
+msgctxt "#30217"
+msgid "Caps the whole download. Use it if the network struggles at full speed (for example the Shield's Wi-Fi dropping out), or to leave room for others."
+msgstr ""
+
+msgctxt "#30218"
+msgid "No limit"
+msgstr ""
+
+msgctxt "#30219"
+msgid "5 MB/s (40 Mbit/s)"
+msgstr ""
+
+msgctxt "#30220"
+msgid "10 MB/s (80 Mbit/s)"
+msgstr ""
+
+msgctxt "#30221"
+msgid "15 MB/s (120 Mbit/s)"
+msgstr ""
+
+msgctxt "#30222"
+msgid "20 MB/s (160 Mbit/s)"
+msgstr ""
+
+msgctxt "#30223"
+msgid "25 MB/s (200 Mbit/s)"
+msgstr ""
+
+msgctxt "#30224"
+msgid "30 MB/s (240 Mbit/s)"
+msgstr ""
+
+msgctxt "#30225"
+msgid "40 MB/s (320 Mbit/s)"
+msgstr ""

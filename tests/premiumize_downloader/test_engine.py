@@ -192,7 +192,7 @@ def run(label, workdir, base, size, expect_sha, connections=8, stop_after=None,
         '' if ok is None else ('SHA OK' if ok else 'SHA MISMATCH')))
     if result.startswith('error'):
         print('   ', result)
-    return result, ok
+    return result, ok, fetched / dt / MB
 
 
 def main():
@@ -271,6 +271,12 @@ def main():
     r = run('drive write hangs', workdir, base, size, expect, deadline=40, sink=StuckSink(),
             write_stall_timeout=10)
     results.append(('done' if r[0].startswith('error: Writing') else r[0], None))
+
+    # Speed limit: 8 connections that could do 48 MB/s, held to 10 MB/s in total.
+    B.per_conn_rate = 6 * MB
+    r = run('speed limit 10 MB/s, 8 conns', workdir, base, size, expect, max_rate=10 * MB, deadline=60)
+    print('    limit check: %.1f MB/s (want 9-11)' % r[2])
+    results.append((r[0] if 9 <= r[2] <= 11 else 'error: limit not held', r[1]))
 
     bad = [r for r in results if r[0] != 'done' and r[0] != 'stopped' or r[1] is False]
     print('\nFAILURES: %d' % len(bad))

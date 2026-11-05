@@ -318,7 +318,8 @@ class Downloader(object):
     """
 
     def __init__(self, url_provider, sink, size=None, connections=8,
-                 max_buffer=192 * MB, stall_timeout=180, log=None, write_stall_timeout=90):
+                 max_buffer=192 * MB, stall_timeout=180, log=None, write_stall_timeout=90,
+                 max_rate=0):
         self.url_provider = url_provider
         self.sink = sink
         self.size = size
@@ -326,6 +327,7 @@ class Downloader(object):
         self.max_buffer = max(16 * MB, int(max_buffer))
         self.stall_timeout = stall_timeout
         self.write_stall_timeout = write_stall_timeout
+        self.max_rate = max(0, int(max_rate or 0))     # bytes/s for the whole download; 0 = no limit
         self.log = log or (lambda msg: None)
 
         self.cond = threading.Condition(threading.Lock())
@@ -340,6 +342,7 @@ class Downloader(object):
         self.state = 'idle'         # idle, starting, running, done, stopped, failed
         self.error = None
         self.active = 0             # connections currently transferring
+        self.retrying = 0           # connections waiting to retry after an error
         self.retired = 0            # connections dropped after the server pushed back
         self.started_at = None
         self.start_offset = 0
@@ -355,6 +358,8 @@ class Downloader(object):
         self._writing_since = None
         self._writer_thread = None
         self._note = None           # (text, time): the latest thing worth telling the viewer
+        self._rate_lock = threading.Lock()
+        self._rate_next = 0.0
         self.takeovers = 0
 
     # ------------------------------------------------------------ public
@@ -388,13 +393,14 @@ class Downloader(object):
             have = self.written + buffered
             size = self.size
             speed = self._speed
-            active = self.active
+            live = max(0, self.connections - self.retired) if self.ranges else 1
+            retrying = self.retrying
         eta = None
         if size and speed > 0:
             eta = max(0, (size - have) / speed)
         return {
             'state': self.state, 'size': size, 'written': self.written, 'have': have,
-            'speed': speed, 'eta': eta, 'connections': active, 'error': self.error,
+            'speed': speed, 'eta': eta, 'connections': live, 'retrying': retrying, 'error': self.error,
             'note': self.note(buffered), 'write_speed': self._write_speed,
         }
 
@@ -683,8 +689,15 @@ class Downloader(object):
                     with self.cond:
                         self.active -= 1
                         self.cond.notify_all()
-                if wait and self._stop.wait(wait):
-                    return
+                if wait:
+                    with self.cond:
+                        self.retrying += 1
+                    try:
+                        if self._stop.wait(wait):
+                            return
+                    finally:
+                        with self.cond:
+                            self.retrying -= 1
         except Exception as exc:  # never let a connection thread die silently
             if not self._stop.is_set():
                 self._fail(DownloadError('Connection thread crashed: %r' % exc, permanent=True))
@@ -729,6 +742,17 @@ class Downloader(object):
             return None
         self._set_note('Connection problem (%s), retrying' % exc)
         return _backoff_delay(failures)
+
+    def _throttle(self, n):
+        """Hold the download to ``max_rate`` (all connections together)."""
+        if not self.max_rate:
+            return
+        with self._rate_lock:
+            now = time.time()
+            self._rate_next = max(self._rate_next, now - 0.5) + n / float(self.max_rate)
+            delay = self._rate_next - now
+        if delay > 0 and self._stop.wait(delay):
+            raise Stopped()
 
     def _release(self, seg, wid):
         with self.cond:
@@ -795,6 +819,7 @@ class Downloader(object):
                         seg.worker = None
                         clean = True
                     self.cond.notify_all()
+                self._throttle(n)
                 if clean:
                     break
         finally:
@@ -868,6 +893,7 @@ class Downloader(object):
                 with self.cond:
                     self.written += len(data)
                     self.received += len(data)
+                self._throttle(len(data))
                 now = time.time()
                 if now - last >= 0.5:
                     last = now
