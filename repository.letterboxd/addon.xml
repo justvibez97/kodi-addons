@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="repository.letterboxd" name="Letterboxd Repository" version="1.0.0" provider-name="justvibez97">
-    <extension point="xbmc.addon.repository" name="Letterboxd Repository">
+<addon id="repository.letterboxd" name="justvibez97 Add-ons" version="1.0.1" provider-name="justvibez97">
+    <extension point="xbmc.addon.repository" name="justvibez97 Add-ons">
         <dir>
             <info compressed="false">https://raw.githubusercontent.com/justvibez97/kodi-addons/main/addons.xml</info>
             <checksum>https://raw.githubusercontent.com/justvibez97/kodi-addons/main/addons.xml.md5</checksum>
@@ -8,8 +8,8 @@
         </dir>
     </extension>
     <extension point="xbmc.addon.metadata">
-        <summary lang="en_GB">Letterboxd addon repository</summary>
-        <description lang="en_GB">Hosts the Letterboxd Kodi addon and pushes updates automatically.</description>
+        <summary lang="en_GB">justvibez97's personal Kodi add-ons</summary>
+        <description lang="en_GB">Hosts the Letterboxd and Premiumize Downloader add-ons and pushes their updates automatically.</description>
         <platform>all</platform>
         <license>MIT</license>
     </extension>

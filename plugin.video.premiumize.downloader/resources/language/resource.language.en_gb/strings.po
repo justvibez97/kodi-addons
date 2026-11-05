@@ -1,0 +1,161 @@
+# Kodi Media Center language file
+# Addon Name: Premiumize Downloader
+# Addon id: plugin.video.premiumize.downloader
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8
+"
+"Language: en_GB
+"
+
+msgctxt "#30100"
+msgid "Account"
+msgstr ""
+
+msgctxt "#30101"
+msgid "API key"
+msgstr ""
+
+msgctxt "#30102"
+msgid "Find it at premiumize.me/account. Paste it with the phone keyboard (Google TV app) instead of typing it."
+msgstr ""
+
+msgctxt "#30103"
+msgid "Check account"
+msgstr ""
+
+msgctxt "#30110"
+msgid "Code pairing (optional)"
+msgstr ""
+
+msgctxt "#30111"
+msgid "OAuth client ID"
+msgstr ""
+
+msgctxt "#30112"
+msgid "Only needed for code pairing. Register a client at premiumize.me/registerclient and enter its client ID here."
+msgstr ""
+
+msgctxt "#30113"
+msgid "Pair with a code"
+msgstr ""
+
+msgctxt "#30114"
+msgid "Remove pairing"
+msgstr ""
+
+msgctxt "#30115"
+msgid "OAuth token"
+msgstr ""
+
+msgctxt "#30200"
+msgid "Downloads"
+msgstr ""
+
+msgctxt "#30201"
+msgid "Download folder"
+msgstr ""
+
+msgctxt "#30202"
+msgid "Choose a drive..."
+msgstr ""
+
+msgctxt "#30203"
+msgid "Connections per download"
+msgstr ""
+
+msgctxt "#30210"
+msgid "More connections usually means more speed, up to what your line allows. Long-press a video and pick \"Speed test with this file\" to find the best number."
+msgstr ""
+
+msgctxt "#30204"
+msgid "Downloads at the same time"
+msgstr ""
+
+msgctxt "#30211"
+msgid "One at a time gives each download the full line speed."
+msgstr ""
+
+msgctxt "#30205"
+msgid "Also download subtitles next to the video"
+msgstr ""
+
+msgctxt "#30206"
+msgid "Resume unfinished downloads when Kodi starts"
+msgstr ""
+
+msgctxt "#30207"
+msgid "Retry failed downloads automatically"
+msgstr ""
+
+msgctxt "#30300"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#30301"
+msgid "When I select a cloud video"
+msgstr ""
+
+msgctxt "#30302"
+msgid "Ask"
+msgstr ""
+
+msgctxt "#30303"
+msgid "Play now (keeps downloading)"
+msgstr ""
+
+msgctxt "#30304"
+msgid "Download only"
+msgstr ""
+
+msgctxt "#30305"
+msgid "Stream from cloud (no download)"
+msgstr ""
+
+msgctxt "#30306"
+msgid "When a download finishes"
+msgstr ""
+
+msgctxt "#30307"
+msgid "Show a notification"
+msgstr ""
+
+msgctxt "#30308"
+msgid "Ask to play it"
+msgstr ""
+
+msgctxt "#30309"
+msgid "Do nothing"
+msgstr ""
+
+msgctxt "#30310"
+msgid "Show progress bar while downloading"
+msgstr ""
+
+msgctxt "#30311"
+msgid "Also show it during video playback"
+msgstr ""
+
+msgctxt "#30312"
+msgid "Show non-video files in the cloud browser"
+msgstr ""
+
+msgctxt "#30400"
+msgid "Advanced"
+msgstr ""
+
+msgctxt "#30401"
+msgid "Memory buffer (MB)"
+msgstr ""
+
+msgctxt "#30404"
+msgid "RAM for parts that arrive ahead of order. 192 MB suits the Shield."
+msgstr ""
+
+msgctxt "#30402"
+msgid "Local player server port"
+msgstr ""
+
+msgctxt "#30403"
+msgid "Debug logging"
+msgstr ""

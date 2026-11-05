@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings version="1">
+    <section id="plugin.video.premiumize.downloader">
+        <category id="account" label="30100">
+            <group id="1">
+                <setting id="api_key" type="string" label="30101" help="30102">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string">
+                        <heading>30101</heading>
+                        <hidden>true</hidden>
+                    </control>
+                </setting>
+                <setting id="account" type="action" label="30103">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://plugin.video.premiumize.downloader/?action=account)</data>
+                    <control type="button" format="action">
+                        <close>true</close>
+                    </control>
+                </setting>
+            </group>
+            <group id="2" label="30110">
+                <setting id="oauth_client_id" type="string" label="30111" help="30112">
+                    <level>1</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string">
+                        <heading>30111</heading>
+                    </control>
+                </setting>
+                <setting id="pair" type="action" label="30113">
+                    <level>1</level>
+                    <data>RunPlugin(plugin://plugin.video.premiumize.downloader/?action=pair)</data>
+                    <dependencies>
+                        <dependency type="enable">
+                            <condition operator="!is" setting="oauth_client_id"></condition>
+                        </dependency>
+                    </dependencies>
+                    <control type="button" format="action">
+                        <close>true</close>
+                    </control>
+                </setting>
+                <setting id="unpair" type="action" label="30114">
+                    <level>1</level>
+                    <data>RunPlugin(plugin://plugin.video.premiumize.downloader/?action=unpair)</data>
+                    <dependencies>
+                        <dependency type="visible">
+                            <condition operator="!is" setting="oauth_token"></condition>
+                        </dependency>
+                    </dependencies>
+                    <control type="button" format="action">
+                        <close>true</close>
+                    </control>
+                </setting>
+                <setting id="oauth_token" type="string" label="30115">
+                    <level>4</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string"/>
+                </setting>
+            </group>
+        </category>
+        <category id="downloads" label="30200">
+            <group id="1">
+                <setting id="download_path" type="path" label="30201">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                        <writable>true</writable>
+                    </constraints>
+                    <control type="button" format="path">
+                        <heading>30201</heading>
+                    </control>
+                </setting>
+                <setting id="choose_folder" type="action" label="30202">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://plugin.video.premiumize.downloader/?action=choose_folder)</data>
+                    <control type="button" format="action">
+                        <close>true</close>
+                    </control>
+                </setting>
+                <setting id="connections" type="integer" label="30203" help="30210">
+                    <level>0</level>
+                    <default>8</default>
+                    <constraints>
+                        <minimum>1</minimum>
+                        <step>1</step>
+                        <maximum>16</maximum>
+                    </constraints>
+                    <control type="spinner" format="integer"/>
+                </setting>
+                <setting id="max_concurrent" type="integer" label="30204" help="30211">
+                    <level>0</level>
+                    <default>1</default>
+                    <constraints>
+                        <minimum>1</minimum>
+                        <step>1</step>
+                        <maximum>3</maximum>
+                    </constraints>
+                    <control type="spinner" format="integer"/>
+                </setting>
+                <setting id="subtitles" type="boolean" label="30205">
+                    <level>0</level>
+                    <default>true</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="resume_on_start" type="boolean" label="30206">
+                    <level>0</level>
+                    <default>true</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="auto_retry" type="boolean" label="30207">
+                    <level>0</level>
+                    <default>true</default>
+                    <control type="toggle"/>
+                </setting>
+            </group>
+        </category>
+        <category id="playback" label="30300">
+            <group id="1">
+                <setting id="click_action" type="integer" label="30301">
+                    <level>0</level>
+                    <default>0</default>
+                    <constraints>
+                        <options>
+                            <option label="30302">0</option>
+                            <option label="30303">1</option>
+                            <option label="30304">2</option>
+                            <option label="30305">3</option>
+                        </options>
+                    </constraints>
+                    <control type="spinner" format="string"/>
+                </setting>
+                <setting id="on_complete" type="integer" label="30306">
+                    <level>0</level>
+                    <default>0</default>
+                    <constraints>
+                        <options>
+                            <option label="30307">0</option>
+                            <option label="30308">1</option>
+                            <option label="30309">2</option>
+                        </options>
+                    </constraints>
+                    <control type="spinner" format="string"/>
+                </setting>
+                <setting id="progress_bg" type="boolean" label="30310">
+                    <level>0</level>
+                    <default>true</default>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="progress_bg_playback" type="boolean" label="30311" parent="progress_bg">
+                    <level>0</level>
+                    <default>false</default>
+                    <dependencies>
+                        <dependency type="enable" setting="progress_bg">true</dependency>
+                    </dependencies>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="show_all_files" type="boolean" label="30312">
+                    <level>0</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+            </group>
+        </category>
+        <category id="advanced" label="30400">
+            <group id="1">
+                <setting id="buffer_mb" type="integer" label="30401" help="30404">
+                    <level>2</level>
+                    <default>192</default>
+                    <constraints>
+                        <minimum>32</minimum>
+                        <step>32</step>
+                        <maximum>512</maximum>
+                    </constraints>
+                    <control type="spinner" format="integer"/>
+                </setting>
+                <setting id="server_port" type="integer" label="30402">
+                    <level>2</level>
+                    <default>52770</default>
+                    <constraints>
+                        <minimum>1024</minimum>
+                        <maximum>65535</maximum>
+                    </constraints>
+                    <control type="edit" format="integer">
+                        <heading>30402</heading>
+                    </control>
+                </setting>
+                <setting id="debug" type="boolean" label="30403">
+                    <level>0</level>
+                    <default>false</default>
+                    <control type="toggle"/>
+                </setting>
+            </group>
+        </category>
+    </section>
+</settings>

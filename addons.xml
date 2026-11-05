@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addons>
-<addon id="repository.letterboxd" name="Letterboxd Repository" version="1.0.0" provider-name="justvibez97">
-    <extension point="xbmc.addon.repository" name="Letterboxd Repository">
+<addon id="repository.letterboxd" name="justvibez97 Add-ons" version="1.0.1" provider-name="justvibez97">
+    <extension point="xbmc.addon.repository" name="justvibez97 Add-ons">
         <dir>
             <info compressed="false">https://raw.githubusercontent.com/justvibez97/kodi-addons/main/addons.xml</info>
             <checksum>https://raw.githubusercontent.com/justvibez97/kodi-addons/main/addons.xml.md5</checksum>
@@ -9,8 +9,8 @@
         </dir>
     </extension>
     <extension point="xbmc.addon.metadata">
-        <summary lang="en_GB">Letterboxd addon repository</summary>
-        <description lang="en_GB">Hosts the Letterboxd Kodi addon and pushes updates automatically.</description>
+        <summary lang="en_GB">justvibez97's personal Kodi add-ons</summary>
+        <description lang="en_GB">Hosts the Letterboxd and Premiumize Downloader add-ons and pushes their updates automatically.</description>
         <platform>all</platform>
         <license>MIT</license>
     </extension>
@@ -34,6 +34,28 @@
         <platform>all</platform>
         <license>MIT</license>
         <website>https://letterboxd.com</website>
+    </extension>
+</addon>
+<addon id="plugin.video.premiumize.downloader" name="Premiumize Downloader" version="1.0.0" provider-name="justvibez97">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="default.py">
+        <provides>video</provides>
+    </extension>
+    <extension point="xbmc.service" library="service.py"/>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Download your premiumize.me cloud files at full speed and play them locally</summary>
+        <description lang="en_GB">Browse your premiumize.me cloud, download videos over several parallel connections, start watching while they download, and play them from local or USB storage. Downloads resume after restarts, and subtitles next to a video come along with it.</description>
+        <disclaimer lang="en_GB">Needs a premiumize.me account. Not made by or affiliated with premiumize.me.</disclaimer>
+        <platform>all</platform>
+        <license>MIT</license>
+        <website>https://github.com/justvibez97/kodi-addons</website>
+        <source>https://github.com/justvibez97/kodi-addons</source>
+        <news>1.0.0: first release</news>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
     </extension>
 </addon>
 </addons>
