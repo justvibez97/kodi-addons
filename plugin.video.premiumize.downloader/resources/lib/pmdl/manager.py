@@ -151,7 +151,8 @@ class Manager(object):
                     if dl is not None and dl.state in ('running', 'starting'):
                         st = dl.stats()
                         item.update(have=st['have'], speed=st['speed'], eta=st['eta'],
-                                    conns=st['connections'], phase=dl.state)
+                                    conns=st['connections'], phase=dl.state, note=st['note'],
+                                    written=st['written'], write_speed=st['write_speed'])
                     else:
                         item['phase'] = 'starting'
                 out.append(item)
@@ -410,7 +411,7 @@ class Manager(object):
                 lambda refresh: self.link(job_id, refresh), sink, size=size,
                 connections=max(1, min(16, common.setting_int('connections', 8))),
                 max_buffer=max(32, common.setting_int('buffer_mb', 192)) * engine.MB,
-                log=lambda m: common.debug('%s: %s' % (name, m)))
+                log=lambda m: common.log('%s: %s' % (name, m)))   # rare events only: worth keeping in the log
             runner.dl = dl
             if runner.stopping:
                 dl.stop()

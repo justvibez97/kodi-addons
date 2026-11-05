@@ -65,6 +65,8 @@ def bar_text(jobs):
         detail = '%s  ·  %s of %s' % (job['name'], common.human_gb(have), common.human_gb(size))
         if job.get('eta') is not None:
             detail += '  ·  %s left' % common.human_eta(job['eta'])
+        if job.get('note') and speed < 1024 * 1024:
+            detail = '%s  ·  %s' % (job['name'], job['note'])     # slow or stalled: say why
     extra = len(active) - 1 + queued
     if extra:
         detail += '  (+%d more)' % extra

@@ -563,6 +563,8 @@ def job_plot(job):
     lines = [job['name'], '%s of %s' % (common.human_gb(job.get('have', 0)), common.human_gb(job['size']))]
     if job['status'] == 'downloading' and job.get('speed'):
         lines.append('%s with %d connections' % (common.human_speed(job['speed']), job.get('conns') or 0))
+    if job.get('note'):
+        lines.append('[COLOR orange]%s[/COLOR]' % job['note'])
     if job.get('error'):
         lines.append('[COLOR red]%s[/COLOR]' % job['error'])
     lines.append(job['dest'])
@@ -714,7 +716,10 @@ def progress_window(job_id=None):
             if queued and len(lines) >= 3:
                 lines[2] += '  ·  %d more waiting' % queued
             lines = [l for l in lines if l][:3]
-            lines.append('[COLOR grey]Cancel only closes this window. The download keeps going.[/COLOR]')
+            if st == 'downloading' and job.get('note'):
+                lines.append('[COLOR orange]%s[/COLOR]' % job['note'])     # why it's slow or waiting
+            else:
+                lines.append('[COLOR grey]Cancel only closes this window. The download keeps going.[/COLOR]')
             dlg.update(pct, '[CR]'.join(l for l in lines if l))
             if finished_at and time.time() - finished_at > 3:
                 break

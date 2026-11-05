@@ -284,15 +284,24 @@ class NullSink(object):
 # --------------------------------------------------------------------------- engine
 
 
+STEAL_AFTER = 6.0      # a piece with no data for this long is taken over by an idle connection
+SLOW_FACTOR = 8.0      # ...and so is the head piece when it runs this many times slower than the rest
+
+
 class Segment(object):
-    __slots__ = ('start', 'recv', 'end', 'chunks', 'worker')
+    __slots__ = ('start', 'recv', 'end', 'chunks', 'worker', 'last', 'since', 'recv_since')
 
     def __init__(self, start, end):
         self.start = start      # first byte not yet written to disk
         self.recv = start       # next byte expected from the network
         self.end = end          # exclusive; shrinks when another connection takes the tail
         self.chunks = []
-        self.worker = None
+        self.assigned(None)
+
+    def assigned(self, wid):
+        self.worker = wid
+        self.last = self.since = time.time()
+        self.recv_since = self.recv
 
     @property
     def remaining(self):
@@ -309,13 +318,14 @@ class Downloader(object):
     """
 
     def __init__(self, url_provider, sink, size=None, connections=8,
-                 max_buffer=192 * MB, stall_timeout=180, log=None):
+                 max_buffer=192 * MB, stall_timeout=180, log=None, write_stall_timeout=90):
         self.url_provider = url_provider
         self.sink = sink
         self.size = size
         self.connections = max(1, int(connections))
         self.max_buffer = max(16 * MB, int(max_buffer))
         self.stall_timeout = stall_timeout
+        self.write_stall_timeout = write_stall_timeout
         self.log = log or (lambda msg: None)
 
         self.cond = threading.Condition(threading.Lock())
@@ -340,7 +350,12 @@ class Downloader(object):
         self._url_lock = threading.Lock()
         self._samples = []
         self._speed = 0.0
+        self._write_speed = 0.0
         self._last_progress = time.time()
+        self._writing_since = None
+        self._writer_thread = None
+        self._note = None           # (text, time): the latest thing worth telling the viewer
+        self.takeovers = 0
 
     # ------------------------------------------------------------ public
 
@@ -380,7 +395,20 @@ class Downloader(object):
         return {
             'state': self.state, 'size': size, 'written': self.written, 'have': have,
             'speed': speed, 'eta': eta, 'connections': active, 'error': self.error,
+            'note': self.note(buffered), 'write_speed': self._write_speed,
         }
+
+    def _set_note(self, text):
+        self._note = (text, time.time())
+        self.log(text)
+
+    def note(self, buffered=0):
+        """A short reason when the download is slow or waiting, else None."""
+        if self._writing_since and buffered >= self.max_buffer * 0.75:
+            return 'Waiting for the drive (writing at %.0f MB/s)' % (self._write_speed / MB)
+        if self._note and time.time() - self._note[1] < 20:
+            return self._note[0]
+        return None
 
     def run(self):
         """Download to completion. Returns 'done' or 'stopped'; raises DownloadError."""
@@ -412,7 +440,9 @@ class Downloader(object):
             raise
         finally:
             try:
-                self.sink.close()
+                writer = self._writer_thread
+                if writer is None or not writer.is_alive():   # never touch a file mid-hung-write
+                    self.sink.close()
             except OSError as exc:
                 if self.state == 'done':
                     self.state = 'failed'
@@ -481,6 +511,7 @@ class Downloader(object):
                    for i in range(self.connections)]
         writer = threading.Thread(target=self._writer, name='pmdl-writer')
         writer.daemon = True
+        self._writer_thread = writer
         writer.start()
         for t in workers:
             t.daemon = True
@@ -491,7 +522,8 @@ class Downloader(object):
             self._stop_threads()
             for t in workers:
                 t.join(10)
-            writer.join(30)
+            # A writer stuck inside a drive write can't be interrupted; don't wait on it.
+            writer.join(1 if self._writing_since else 30)
 
     def _stop_threads(self):
         with self.cond:
@@ -516,18 +548,27 @@ class Downloader(object):
             if now - self._last_progress > self.stall_timeout:
                 self._fail(DownloadError('No data received for %d seconds' % self.stall_timeout))
                 return
+            writing = self._writing_since
+            if writing and now - writing > self.write_stall_timeout:
+                self._fail(DownloadError(
+                    'Writing to the drive has stopped responding (one write has taken over %d seconds). '
+                    'Check the drive, or try another USB port.' % self.write_stall_timeout))
+                return
 
     def _sample(self, now):
         with self.cond:
             received = self.received
-        self._samples.append((now, received))
+            written = self.written
+        self._samples.append((now, received, written))
         cutoff = now - 4.0
         while len(self._samples) > 2 and self._samples[0][0] < cutoff:
             self._samples.pop(0)
-        t0, r0 = self._samples[0]
+        t0, r0, w0 = self._samples[0]
         if now - t0 > 0.4:
             inst = (received - r0) / (now - t0)
             self._speed = inst if self._speed == 0 else self._speed * 0.6 + inst * 0.4
+            winst = (written - w0) / (now - t0)
+            self._write_speed = winst if self._write_speed == 0 else self._write_speed * 0.6 + winst * 0.4
         # Size segments so each connection works ~2 s per request: fewer
         # round trips at high speed, finer splitting at low speed.
         live = max(1, self.connections - self.retired)
@@ -558,14 +599,14 @@ class Downloader(object):
             # 1. A segment whose connection died.
             for seg in self.segments:
                 if seg.worker is None and seg.remaining > 0:
-                    seg.worker = wid
+                    seg.assigned(wid)
                     return seg
             # 2. Fresh range from the unassigned part of the file.
             if self.frontier < self.size:
                 end = min(self.size, self.frontier + self.chunk)
                 if not self.segments or self._committed() + (end - self.frontier) <= self.max_buffer:
                     seg = Segment(self.frontier, end)
-                    seg.worker = wid
+                    seg.assigned(wid)
                     self.frontier = end
                     self.segments.append(seg)
                     return seg
@@ -583,11 +624,36 @@ class Downloader(object):
                 mid = best.recv + best.remaining // 2
                 mid -= mid % (64 * 1024) if mid - best.recv > 64 * 1024 else 0
                 seg = Segment(mid, best.end)
-                seg.worker = wid
+                seg.assigned(wid)
                 best.end = mid
                 self.segments.insert(self.segments.index(best) + 1, seg)
                 return seg
+            # 4. Nothing new to fetch: take over a piece whose connection has
+            #    stalled, or a head piece crawling far behind the others (one
+            #    slow connection must not freeze the whole download).
+            victim = self._stalled_segment()
+            if victim is not None:
+                old = victim.worker
+                victim.assigned(wid)
+                self.takeovers += 1
+                self._set_note('A slow connection was replaced')
+                self.log('connection %s took over %d-%d from connection %s' % (wid, victim.recv, victim.end, old))
+                return victim
             self.cond.wait(0.5)
+
+    def _stalled_segment(self):
+        now = time.time()
+        per_conn = self._speed / max(1, self.active)
+        for i, seg in enumerate(self.segments):
+            if seg.worker is None or seg.remaining <= 0:
+                continue
+            if now - seg.last > STEAL_AFTER:
+                return seg
+            if i == 0 and now - seg.since > 4.0 and per_conn > 0:
+                rate = (seg.recv - seg.recv_since) / (now - seg.since)
+                if rate * SLOW_FACTOR < per_conn:
+                    return seg
+        return None
 
     def _worker(self, wid):
         conn = Connection()
@@ -632,8 +698,10 @@ class Downloader(object):
             with self.cond:
                 if self.connections - self.retired - 1 >= 1:
                     self.retired += 1
-                    self.log('connection %d retired: %s' % (wid, exc))
+                    self._set_note('premiumize limited connections (%s): using %d' % (
+                        exc, self.connections - self.retired))
                     return None
+            self._set_note('premiumize is busy (%s), retrying' % exc)
             return _backoff_delay(failures)
         if isinstance(exc, LinkExpired):
             with self.cond:
@@ -643,8 +711,10 @@ class Downloader(object):
                     # The link works for the other connections, so this is a
                     # per-user connection limit rather than an expired link.
                     self.retired += 1
-                    self.log('connection %d retired: %s' % (wid, exc))
+                    self._set_note('premiumize limited connections (%s): using %d' % (
+                        exc, self.connections - self.retired))
                     return None
+            self._set_note('Refreshing the download link (%s)' % exc)
             if failures > 6:
                 self._fail(DownloadError('The download link stopped working (%s)' % exc))
                 return None
@@ -657,7 +727,7 @@ class Downloader(object):
         if exc.permanent:
             self._fail(exc)
             return None
-        self.log('connection %d error (%d): %s' % (wid, failures, exc))
+        self._set_note('Connection problem (%s), retrying' % exc)
         return _backoff_delay(failures)
 
     def _release(self, seg, wid):
@@ -711,6 +781,8 @@ class Downloader(object):
                 if not data:
                     raise DownloadError('Connection closed early')
                 with self.cond:
+                    if seg.worker != wid:
+                        return          # another connection took this piece over; drop ours
                     n = min(len(data), seg.end - seg.recv)
                     if n <= 0:
                         clean = True
@@ -718,7 +790,7 @@ class Downloader(object):
                     seg.chunks.append(data if n == len(data) else data[:n])
                     seg.recv += n
                     self.received += n
-                    self._last_progress = time.time()
+                    self._last_progress = seg.last = time.time()
                     if seg.recv >= seg.end:
                         seg.worker = None
                         clean = True
@@ -752,9 +824,12 @@ class Downloader(object):
                 n = 0
                 try:
                     for data in chunks:
+                        self._writing_since = time.time()
                         self.sink.write(data)
+                        self._writing_since = None
                         n += len(data)
                 except OSError as exc:
+                    self._writing_since = None
                     self._fail(DownloadError(disk_error_message(exc, getattr(self.sink, 'path', '')), permanent=True))
                     return
                 with self.cond:

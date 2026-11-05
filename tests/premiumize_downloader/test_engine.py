@@ -27,6 +27,8 @@ class Behaviour(object):
     over_limit_code = 503
     valid_token = 'a'             # requests with another ?t= get HTTP 403
     ranges = True
+    trickle_first = False         # the request that starts at byte 0 crawls at 16 KB/s
+    hang_at = None                # one response stops sending (socket stays open) after 1 MB
     requests = 0
     active = 0
 
@@ -85,6 +87,14 @@ class Handler(BaseHTTPRequestHandler):
         drop_at = None
         if B.drop_chance and length > 2 * MB and random.random() < B.drop_chance:
             drop_at = random.randint(MB, length - MB)
+        rate = B.per_conn_rate
+        if B.trickle_first and start == 0 and length > 1:
+            B.trickle_first = False       # one slow connection, like a bad CDN path
+            rate = 16 * 1024
+        hang = False
+        if B.hang_at is not None and start <= B.hang_at < start + length and length > 2 * MB:
+            B.hang_at = None
+            hang = True
         with open(self.data_path, 'rb') as f:
             f.seek(start)
             sent = 0
@@ -94,13 +104,16 @@ class Handler(BaseHTTPRequestHandler):
                 if drop_at is not None and sent >= drop_at:
                     self.connection.shutdown(socket.SHUT_RDWR)
                     return
+                if hang and sent >= MB:
+                    time.sleep(120)       # silent but open, like a stalled CDN connection
+                    return
                 buf = f.read(n)
                 try:
                     self.wfile.write(buf)
                 except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                     return
                 sent += n
-                ahead = sent / B.per_conn_rate - (time.time() - t0)
+                ahead = sent / rate - (time.time() - t0)
                 if ahead > 0:
                     time.sleep(ahead)
 
@@ -119,7 +132,8 @@ def sha(path):
 
 
 def run(label, workdir, base, size, expect_sha, connections=8, stop_after=None,
-        max_buffer=64 * MB, url_path='/file.bin', refresh_token=None, resume=False):
+        max_buffer=64 * MB, url_path='/file.bin', refresh_token=None, resume=False, deadline=None,
+        sink=None, **engine_kw):
     part = os.path.join(workdir, 'out.part')
     if not resume and os.path.exists(part):
         os.remove(part)
@@ -132,10 +146,10 @@ def run(label, workdir, base, size, expect_sha, connections=8, stop_after=None,
                 state['token'] = refresh_token
         return base + url_path + ('' if 'redirect' in url_path else '?t=' + state['token'])
 
-    sink = engine.FileSink(part, resume=resume)
+    sink = sink or engine.FileSink(part, resume=resume)
     start_offset = sink.offset
     d = engine.Downloader(provider, sink, size=size, connections=connections,
-                          max_buffer=max_buffer, stall_timeout=30, log=lambda m: None)
+                          max_buffer=max_buffer, stall_timeout=30, log=lambda m: None, **engine_kw)
     peak = [0]
 
     def watch():
@@ -146,8 +160,14 @@ def run(label, workdir, base, size, expect_sha, connections=8, stop_after=None,
             if stop_after and st['written'] >= stop_after:
                 d.stop()
                 return
+            if deadline and time.time() - t0 > deadline:
+                watch.timed_out = True
+                watch.last = st
+                d.stop()
+                return
             time.sleep(0.05)
 
+    watch.timed_out = False
     t = threading.Thread(target=watch)
     t0 = time.time()
     t.start()
@@ -157,6 +177,11 @@ def run(label, workdir, base, size, expect_sha, connections=8, stop_after=None,
         result = 'error: %s' % exc
     t.join()
     dt = time.time() - t0
+    if watch.timed_out:
+        st = watch.last
+        result = 'error: stuck after %ds at %d%% (written %d MB, in RAM %d MB, %.1f MB/s) note=%r' % (
+            deadline, st['have'] * 100 // size, st['written'] >> 20, (st['have'] - st['written']) >> 20,
+            st['speed'] / MB, st.get('note'))
     fetched = d.received
     ok = None
     if result == 'done':
@@ -225,6 +250,27 @@ def main():
     # Slow head: one connection crawls while others race ahead -> RAM cap must hold.
     B.per_conn_rate = 20 * MB
     results.append(run('tight 24 MB RAM cap, 8 conns', workdir, base, size, expect, max_buffer=24 * MB))
+
+    # Stalls seen on the Shield: one slow or silent connection must not freeze everything.
+    B.per_conn_rate = 10 * MB
+    B.trickle_first = True
+    results.append(run('first connection crawls at 16 KB/s', workdir, base, size, expect, deadline=60))
+    B.trickle_first = True
+    results.append(run('  ...same with 192 MB RAM (Shield default)', workdir, base, size, expect, deadline=60,
+                       max_buffer=192 * MB))
+    B.trickle_first = False
+    B.hang_at = 40 * MB
+    results.append(run('a connection goes silent mid-file', workdir, base, size, expect, deadline=60))
+    B.hang_at = None
+
+    class StuckSink(engine.NullSink):
+        def write(self, data):
+            if self.offset > 20 * MB:
+                time.sleep(3600)          # a drive write that never returns
+            engine.NullSink.write(self, data)
+    r = run('drive write hangs', workdir, base, size, expect, deadline=40, sink=StuckSink(),
+            write_stall_timeout=10)
+    results.append(('done' if r[0].startswith('error: Writing') else r[0], None))
 
     bad = [r for r in results if r[0] != 'done' and r[0] != 'stopped' or r[1] is False]
     print('\nFAILURES: %d' % len(bad))
