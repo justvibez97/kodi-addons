@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <addon id="plugin.video.letterboxd"
        name="Letterboxd"
-       version="1.0.6"
+       version="1.0.7"
        provider-name="user">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
@@ -18,5 +18,8 @@
         <platform>all</platform>
         <license>MIT</license>
         <website>https://letterboxd.com</website>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
     </extension>
 </addon>
