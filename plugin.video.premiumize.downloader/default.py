@@ -782,6 +782,25 @@ def action_unpair():
     common.notify('Pairing removed')
 
 
+def speedtest_advice(results, current):
+    """Pick a connection count from [(connections, bytes/s)] and explain it."""
+    top = max(sp for _n, sp in results)
+    speeds = dict(results)
+    # Keep at least 4 connections: with fewer, nothing can take over from one
+    # that slows down. Among those within 5% of the fastest, prefer the current
+    # setting, then the smallest.
+    good = [n for n, sp in results if n >= 4 and sp >= top * 0.95]
+    if not good:
+        good = [max(results, key=lambda r: r[1])[0]]
+    pick = current if current in good else min(good)
+    if speeds.get(1, 0) >= top * 0.95:
+        verdict = ("Even 1 connection reaches %d Mbit/s, so that is your line's limit right now."
+                   % (top * 8 / 1e6))
+    else:
+        verdict = 'Fastest: %d connections, %d Mbit/s.' % (pick, speeds.get(pick, top) * 8 / 1e6)
+    return pick, verdict
+
+
 def action_speedtest():
     """Measure this file's download speed with different connection counts (nothing is saved)."""
     file_id = ARGS['id']
@@ -821,20 +840,13 @@ def action_speedtest():
         dlg.close()
     if not results:
         return
-    best_n, best_speed = max(results, key=lambda r: r[1])
-    # Prefer fewer connections when within 5% of the best.
-    for n, speed in results:
-        if speed >= best_speed * 0.95:
-            best_n, best_speed = n, speed
-            break
     current = common.setting_int('connections', 8)
     summary = 'MB/s by connections:  ' + '   '.join('%d: %.1f' % (n, sp / 1048576.0) for n, sp in results)
-    best = 'Fastest: %d connections, %s (%d Mbit/s). Now set to %d.' % (
-        best_n, common.human_speed(best_speed), best_speed * 8 / 1e6, current)
-    if best_n == current:
-        DIALOG.ok('Speed test', '%s[CR]%s' % (summary, best))
-    elif DIALOG.yesno('Speed test', '%s[CR]%s[CR]Use %d connections from now on?' % (summary, best, best_n)):
-        common.set_setting('connections', str(best_n))
+    pick, verdict = speedtest_advice(results, current)
+    if pick == current:
+        DIALOG.ok('Speed test', '%s[CR]%s[CR]Keeping %d connections.' % (summary, verdict, current))
+    elif DIALOG.yesno('Speed test', '%s[CR]%s[CR]Switch from %d to %d connections?' % (summary, verdict, current, pick)):
+        common.set_setting('connections', str(pick))
 
 
 # ======================================================================= router

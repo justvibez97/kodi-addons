@@ -39,7 +39,7 @@
         </assets>
     </extension>
 </addon>
-<addon id="plugin.video.premiumize.downloader" name="Premiumize Downloader" version="1.0.4" provider-name="justvibez97">
+<addon id="plugin.video.premiumize.downloader" name="Premiumize Downloader" version="1.0.5" provider-name="justvibez97">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
@@ -55,7 +55,8 @@
         <license>MIT</license>
         <website>https://github.com/justvibez97/kodi-addons</website>
         <source>https://github.com/justvibez97/kodi-addons</source>
-        <news>1.0.4: Fixes downloads freezing at 0 speed when one connection slowed to a crawl: an idle connection now takes over the slow piece. Shows why a download is slow or waiting (drive speed, connection limits, retries) in the progress window, the corner bar and Downloads. A drive write that hangs now stops the download with a clear message.
+        <news>1.0.5: Speed test advice keeps at least 4 connections (so a slow one can be replaced) and says when your line is the limit.
+1.0.4: Fixes downloads freezing at 0 speed when one connection slowed to a crawl: an idle connection now takes over the slow piece. Shows why a download is slow or waiting (drive speed, connection limits, retries) in the progress window, the corner bar and Downloads. A drive write that hangs now stops the download with a clear message.
 1.0.3: When no USB drive is visible, explains that a drive set up as "device storage" must be formatted as removable storage.
 1.0.2: "Choose download folder..." now lists USB drives found directly on the device (Kodi's own folder browser often misses them on the Shield), shows free space and size, and accepts a typed path.
 1.0.1: Selecting a cloud video now shows the Play now / Download only / Stream choice as a normal list before playback starts (it could be invisible before). Corrected the Shield permission path in messages.
