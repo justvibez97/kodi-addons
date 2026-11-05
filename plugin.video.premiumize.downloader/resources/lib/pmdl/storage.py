@@ -63,8 +63,8 @@ def check_writable(folder):
         return None
     except OSError as exc:
         if is_android():
-            return ('Kodi can\'t write to %s (%s).\n\nOn the Shield: Settings > Apps > Special app '
-                    'access > All files access > Kodi > Allow. Then try again.' % (folder, exc.strerror or exc))
+            return ('Kodi can\'t write to %s (%s).[CR][CR]On the Shield: Settings > Apps > Kodi > Permissions > '
+                    'Files and media > Allow management of all files. Then try again.' % (folder, exc.strerror or exc))
         return 'Can\'t write to %s: %s' % (folder, exc.strerror or exc)
 
 

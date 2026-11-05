@@ -120,9 +120,9 @@ def file_context(entry, fid, path, job):
     ctx = []
     done = job and job['status'] == 'done' and os.path.exists(job['dest'])
     if not done:
-        ctx.append(('Play now (keeps downloading)', play_cmd(action='play', mode='now', **params)))
+        ctx.append(('Play now (keeps downloading)', run(action='choose', pick='now', **params)))
         ctx.append(('Download', run(action='download', **params)))
-    ctx.append(('Stream from cloud (no download)', play_cmd(action='play', mode='stream', **params)))
+    ctx.append(('Stream from cloud (no download)', run(action='choose', pick='stream', **params)))
     if job and job['status'] == 'downloading':
         ctx.append(('Download progress', run(action='progress', id=entry['id'])))
     if done:
@@ -134,6 +134,7 @@ def file_context(entry, fid, path, job):
 
 def list_entries(entries, fid, path, jobs, show_folders=True):
     show_all = common.setting_bool('show_all_files')
+    ask = common.setting_int('click_action', 0) == 0
     folders = sorted([e for e in entries if e.get('type') == 'folder'], key=lambda e: e['name'].lower())
     files = sorted([e for e in entries if e.get('type') == 'file'], key=lambda e: e['name'].lower())
     if show_folders:
@@ -156,9 +157,14 @@ def list_entries(entries, fid, path, jobs, show_folders=True):
         set_info(li, label, '%s[CR]%s' % (common.human_gb(size), e.get('path') or path or 'My cloud'))
         params = dict(id=e['id'], fid=fid or e.get('folder_id'), path=path, name=e['name'], size=size)
         if video:
-            li.setProperty('IsPlayable', 'true')
             li.addContextMenuItems(file_context(e, params['fid'], path, job))
-            add(li, url(action='play', **params), folder=False)
+            if ask and not job:
+                # Ask before playback starts. A dialog opened while Kodi is already
+                # starting playback can end up invisible (seen with Umbrestuary).
+                add(li, url(action='choose', **params), folder=False)
+            else:
+                li.setProperty('IsPlayable', 'true')
+                add(li, url(action='play', **params), folder=False)
         else:
             li.addContextMenuItems([('Download', run(action='download', **params))])
             add(li, url(action='download', **params), folder=False)
@@ -446,8 +452,9 @@ def action_play():
         else:
             choice = common.setting_int('click_action', 0)
             if choice == 0:
-                picked = DIALOG.contextmenu(['Play now (keeps downloading in the background)',
-                                             'Download only', 'Stream from cloud (no download)'])
+                # Normally answered in action_choose before playback starts; this
+                # path is only reached from favourites or widgets.
+                picked = DIALOG.select(name, CHOICES)
                 if picked < 0:
                     return cancel_resolve()
                 choice = picked + 1
@@ -467,11 +474,40 @@ def action_play():
         enqueue([it])
         return cancel_resolve()
 
-    result = enqueue([it], start_id=file_id, quiet=True)
-    if result is None:
+    if job and job['status'] != 'done':
+        client.cmd('start_now', id=file_id)          # already queued: just bring it forward
+    elif enqueue([it], start_id=file_id, quiet=True) is None:
         return cancel_resolve()
-    subs = [s['link'] for s in it['subs'] if s.get('link')]
+    local_subs = [p for p in (job or {}).get('sub_paths') or [] if os.path.exists(p)]
+    subs = local_subs or [s['link'] for s in it['subs'] if s.get('link')]
     resolve(client.stream_url(file_id, it['name']), it['name'], common.mime_for(it['name']), subs)
+
+
+CHOICES = ['Play now (keeps downloading in the background)', 'Download only', 'Stream from cloud (no download)']
+
+
+def action_choose():
+    """Select on a cloud video that isn't downloaded: ask first, then start playback."""
+    name = ARGS.get('name') or ARGS['id']
+    params = dict((k, ARGS[k]) for k in ('id', 'fid', 'path', 'name', 'size') if ARGS.get(k))
+    pick = ARGS.get('pick')
+    if not pick:
+        picked = DIALOG.select(name, CHOICES)
+        if picked < 0:
+            return
+        pick = ('now', 'download', 'stream')[picked]
+    if pick == 'download':
+        return action_download()
+    if pick == 'stream':
+        return xbmc.executebuiltin('PlayMedia(%s)' % url(action='play', mode='stream', **params))
+    try:
+        it = single_item(api())
+    except ApiError as exc:
+        return DIALOG.ok('Premiumize Downloader', str(exc))
+    # Drive picker and space checks happen here, before playback starts.
+    if enqueue([it], start_id=it['id'], quiet=True) is None:
+        return
+    xbmc.executebuiltin('PlayMedia(%s)' % url(action='play', **params))
 
 
 def action_playjob():
@@ -588,7 +624,7 @@ def action_jobmenu():
             DIALOG.ok(job['name'], job['error'])
         options += [('Resume' if st == 'paused' else 'Retry now', 'resume'), ('Play now', 'play')]
     options.append(('Cancel and delete partial file', 'cancel'))
-    picked = DIALOG.contextmenu([o[0] for o in options])
+    picked = DIALOG.select(job['name'], [o[0] for o in options])
     if picked < 0:
         return
     what = options[picked][1]
@@ -802,6 +838,8 @@ def main():
             downloads()
         elif action == 'play':
             action_play()
+        elif action == 'choose':
+            action_choose()
         elif action == 'playjob':
             action_playjob()
         elif action == 'download':

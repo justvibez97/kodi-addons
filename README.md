@@ -49,8 +49,8 @@ drive) at full line speed, and play them locally in Kodi's player.
    Otherwise, install the repository first: in Kodi's File manager, add the source
    `https://raw.githubusercontent.com/justvibez97/kodi-addons/main/install.zip`. Then go to
    **Add-ons → Install from zip file**, pick that source, and choose `repo.zip`.
-2. Let Kodi write to the USB drive: Shield **Settings → Apps → Special app access → All files
-   access → Kodi → Allow**.
+2. Let Kodi write to the USB drive: Shield **Settings → Apps → Kodi → Permissions → Files and
+   media → Allow management of all files**.
 3. Open the add-on's settings and paste your API key from <https://www.premiumize.me/account>.
    The Google TV app's keyboard on your phone can paste it.
 4. Pick a video in **My cloud**. The first time, it asks where downloads go: pick the USB drive.

@@ -79,8 +79,8 @@ def disk_error_message(exc, path=''):
         return ('This drive can\'t hold files over 4 GB (it is probably FAT32). '
                 'Reformat it as exFAT or NTFS, or pick another folder.')
     if code in (errno.EACCES, errno.EPERM, errno.EROFS):
-        return ('Kodi isn\'t allowed to write to %s. On the Shield: Settings > Apps > '
-                'Special app access > All files access > Kodi > Allow.' % (path or 'this folder'))
+        return ('Kodi isn\'t allowed to write to %s. On the Shield: Settings > Apps > Kodi > '
+                'Permissions > Files and media > Allow management of all files.' % (path or 'this folder'))
     return 'Disk error: %s' % exc
 
 
