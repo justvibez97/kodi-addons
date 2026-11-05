@@ -285,10 +285,10 @@ def single_item(prem):
     return build_item(entry, [p for p in path.split('/') if p], entries, extra)
 
 
-NO_USB = ("Kodi can't see a USB drive.[CR]In the Shield's storage settings, check that the drive is set up "
-          'as removable storage, and that Kodi has "Allow management of all files" '
-          '(Settings > Apps > Kodi > Permissions > Files and media). Unplugging and replugging the drive '
-          'can help too.')
+NO_USB = ("Kodi can't see a USB drive.[CR]If the Shield's Storage settings list your drive under "
+          '"Device storage", it is set up as device storage, which Android keeps private to the system. '
+          'Select the drive there and format it as removable storage (this erases it), then come back here. '
+          'Kodi also needs "Allow management of all files" (Settings > Apps > Kodi > Permissions > Files and media).')
 
 
 def choose_root(reason=''):

@@ -57,6 +57,9 @@ drive) at full line speed, and play them locally in Kodi's player.
    (listed as *USB drive <id>* with its free space and size). To change it later, use
    **Settings → Downloads → Choose download folder...**. Kodi's own folder browser often doesn't
    list USB drives on the Shield, and its "External storage" is the Shield's internal storage.
+   The drive must be set up as **removable storage**. If the Shield's Storage settings list it under
+   *Device storage*, Android keeps it private to the system and no app can save files to it: select
+   it there and format it as removable storage (this erases it).
 
 ### Using it
 
