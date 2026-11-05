@@ -814,6 +814,64 @@ def speedtest_advice(results, current):
     return pick, verdict
 
 
+def drive_verdict(avg, pause):
+    """Plain-language reading of a drive test (average bytes/s, longest pause in s)."""
+    mbs = avg / 1048576.0
+    if mbs < 15 or pause > 10:
+        return ('This drive is too slow for fast downloads: downloads can only go as fast as it saves '
+                '(about %.0f MB/s). A USB 3 SSD or hard drive saves 100+ MB/s.' % mbs)
+    if mbs < 35:
+        return ('This drive keeps up with about %.0f MB/s (%d Mbit/s). Faster downloads would wait for it.'
+                % (mbs, mbs * 8.39))
+    return 'This drive is fast enough for your line.'
+
+
+def action_drivetest():
+    """Write a test file to the download folder's drive and report its real speed."""
+    folder = ensure_root()
+    if not folder:
+        return
+    resume_after = False
+    try:
+        jobs = client.status(wait=2)['jobs']
+        if any(j['status'] == 'downloading' for j in jobs):
+            if not DIALOG.yesno('Test drive speed', 'Pause downloads during the test so they don\'t '
+                                'skew the result? They resume afterwards.'):
+                return
+            client.cmd('pause_all')
+            resume_after = True
+    except client.ServiceDown:
+        pass
+    test = storage.WriteTest(folder)
+    test.start()
+    dlg = xbmcgui.DialogProgress()
+    dlg.create('Test drive speed', 'Writing a test file to %s...' % folder)
+    try:
+        while not test.finished:
+            elapsed, total, avg, now, pause = test.stats()
+            stopping = dlg.iscanceled() or test.stop_flag
+            if stopping:
+                test.stop_flag = True
+            line2 = ('Waiting for the drive to finish its last write...' if stopping else
+                     'Now %.1f MB/s  ·  average %.1f MB/s' % (now / 1048576.0, avg / 1048576.0))
+            dlg.update(int(min(100, max(elapsed / test.seconds, total / float(test.limit)) * 100)),
+                       '%s written in %ds[CR]%s[CR]Longest pause so far: %ds' % (
+                           common.human_size(total), elapsed, line2, pause))
+            xbmc.sleep(500)
+    finally:
+        dlg.close()
+        if resume_after:
+            try:
+                client.cmd('resume_all')
+            except client.ServiceDown:
+                pass
+    if test.error is not None:
+        return DIALOG.ok('Test drive speed', storage.check_writable(folder) or 'The test failed: %s' % test.error)
+    elapsed, total, avg, _now, pause = test.stats()
+    DIALOG.ok('Test drive speed', 'Saved %s in %ds: average %.1f MB/s, longest pause %ds.[CR]%s' % (
+        common.human_size(total), elapsed, avg / 1048576.0, pause, drive_verdict(avg, pause)))
+
+
 def action_speedtest():
     """Measure this file's download speed with different connection counts (nothing is saved)."""
     file_id = ARGS['id']
@@ -907,6 +965,8 @@ def main():
             action_unpair()
         elif action == 'speedtest':
             action_speedtest()
+        elif action == 'drivetest':
+            action_drivetest()
     except client.ServiceDown as exc:
         DIALOG.ok('Premiumize Downloader', str(exc))
         if action in ('play', 'playjob'):

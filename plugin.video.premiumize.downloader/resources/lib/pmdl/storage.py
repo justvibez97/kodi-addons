@@ -2,6 +2,8 @@
 """Where downloads can go: drives, free space, write access, file-size limits."""
 import os
 import shutil
+import threading
+import time
 
 FAT32_LIMIT = 4 * 1024 ** 3 - 1
 
@@ -123,3 +125,80 @@ def describe(path):
     except OSError:
         return 'free space unknown'
     return '%s free of %s' % (human_gb(usage.free), human_gb(usage.total))
+
+
+class WriteTest(threading.Thread):
+    """Measure how fast a folder's drive really stores data.
+
+    Writes incompressible data and forces it to the drive every 64 MB, so the
+    result is the drive's own speed rather than Android's memory cache. Runs
+    in its own thread because a slow drive can block a single write for a
+    long time; the caller polls :meth:`stats`.
+    """
+
+    def __init__(self, folder, seconds=30, limit=1024 ** 3, block=4 * 1024 ** 2, sync_every=64 * 1024 ** 2):
+        threading.Thread.__init__(self, name='pmdl-drive-test')
+        self.daemon = True
+        self.folder = folder
+        self.seconds = seconds
+        self.limit = limit
+        self.block = block
+        self.sync_every = sync_every
+        self.samples = [(0.0, 0)]
+        self.error = None
+        self.finished = False
+        self.stop_flag = False
+        self.t0 = None
+
+    def run(self):
+        path = os.path.join(self.folder, '.pmdl-drive-test.tmp')
+        fd = None
+        try:
+            os.makedirs(self.folder, exist_ok=True)
+            data = memoryview(os.urandom(self.block))
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, 'O_BINARY', 0), 0o644)
+            self.t0 = time.time()
+            written = unsynced = 0
+            while not self.stop_flag and written < self.limit and time.time() - self.t0 < self.seconds:
+                view = data
+                while view:
+                    n = os.write(fd, view)
+                    view = view[n:]
+                    written += n
+                    unsynced += n
+                if unsynced >= self.sync_every:
+                    os.fsync(fd)
+                    unsynced = 0
+                self.samples.append((time.time() - self.t0, written))
+            os.fsync(fd)
+            self.samples.append((time.time() - self.t0, written))
+        except OSError as exc:
+            self.error = exc
+        finally:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            self.finished = True
+
+    def stats(self):
+        """(seconds, bytes, average B/s, recent B/s, longest pause in s)."""
+        samples = list(self.samples)
+        now = (time.time() - self.t0) if (self.t0 and not self.finished) else samples[-1][0]
+        t, total = samples[-1]
+        elapsed = max(now, t, 0.001)
+        recent = [s for s in samples if s[0] >= elapsed - 3.0]
+        if len(recent) >= 2 and recent[-1][0] > recent[0][0]:
+            rate_now = (recent[-1][1] - recent[0][1]) / (recent[-1][0] - recent[0][0])
+        else:
+            rate_now = 0.0
+        if now - t > 3.0:
+            rate_now = 0.0          # a write has been blocking for a while
+        gaps = [b[0] - a[0] for a, b in zip(samples, samples[1:])]
+        pause = max(gaps + [now - t if not self.finished else 0.0])
+        return elapsed, total, total / elapsed, rate_now, pause

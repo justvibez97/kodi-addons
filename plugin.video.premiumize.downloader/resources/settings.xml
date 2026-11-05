@@ -86,6 +86,13 @@
                         <heading>30201</heading>
                     </control>
                 </setting>
+                <setting id="drivetest" type="action" label="30226" help="30227">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://plugin.video.premiumize.downloader/?action=drivetest)</data>
+                    <control type="button" format="action">
+                        <close>true</close>
+                    </control>
+                </setting>
                 <setting id="connections" type="integer" label="30203" help="30210">
                     <level>0</level>
                     <default>8</default>

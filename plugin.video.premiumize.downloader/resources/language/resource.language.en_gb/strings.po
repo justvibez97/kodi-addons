@@ -203,3 +203,11 @@ msgstr ""
 msgctxt "#30225"
 msgid "40 MB/s (320 Mbit/s)"
 msgstr ""
+
+msgctxt "#30226"
+msgid "Test drive speed"
+msgstr ""
+
+msgctxt "#30227"
+msgid "Writes a test file for about 30 seconds and shows how fast the download folder's drive really saves data."
+msgstr ""
