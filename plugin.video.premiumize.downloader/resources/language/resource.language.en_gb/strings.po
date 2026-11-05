@@ -57,7 +57,7 @@ msgid "Download folder"
 msgstr ""
 
 msgctxt "#30202"
-msgid "Choose a drive..."
+msgid "Choose download folder..."
 msgstr ""
 
 msgctxt "#30203"
@@ -158,4 +158,8 @@ msgstr ""
 
 msgctxt "#30403"
 msgid "Debug logging"
+msgstr ""
+
+msgctxt "#30213"
+msgid "Set by \"Choose download folder...\", which lists USB drives. You can also type a path such as /storage/1A2B-3C4D/Premiumize."
 msgstr ""

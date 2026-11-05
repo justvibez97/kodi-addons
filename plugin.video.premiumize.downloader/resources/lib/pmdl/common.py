@@ -99,6 +99,8 @@ def human_size(n):
 
 
 def human_gb(n):
+    if n >= 1024 ** 4:
+        return '%.1f TB' % (n / 1024.0 ** 4)
     return '%.1f GB' % (n / 1073741824.0) if n >= 1073741824 else human_size(n)
 
 

@@ -69,22 +69,21 @@
         </category>
         <category id="downloads" label="30200">
             <group id="1">
-                <setting id="download_path" type="path" label="30201">
-                    <level>0</level>
-                    <default/>
-                    <constraints>
-                        <allowempty>true</allowempty>
-                        <writable>true</writable>
-                    </constraints>
-                    <control type="button" format="path">
-                        <heading>30201</heading>
-                    </control>
-                </setting>
                 <setting id="choose_folder" type="action" label="30202">
                     <level>0</level>
                     <data>RunPlugin(plugin://plugin.video.premiumize.downloader/?action=choose_folder)</data>
                     <control type="button" format="action">
                         <close>true</close>
+                    </control>
+                </setting>
+                <setting id="download_path" type="string" label="30201" help="30213">
+                    <level>0</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string">
+                        <heading>30201</heading>
                     </control>
                 </setting>
                 <setting id="connections" type="integer" label="30203" help="30210">

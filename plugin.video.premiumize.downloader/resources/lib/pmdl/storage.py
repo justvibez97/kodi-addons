@@ -14,24 +14,41 @@ def is_android():
         return os.path.isdir('/storage/emulated')
 
 
-def volumes():
-    """Drives worth offering on Android: [(label, root_path)]."""
-    out = []
-    if not os.path.isdir('/storage'):
-        return out
-    internal = '/storage/emulated/0'
+NOT_DRIVES = ('emulated', 'self', 'sdcard0', 'sdcard1', 'knox-emulated')
+
+
+def usb_drives(storage_root='/storage', mounts=None):
+    """Removable drives as /storage/<volume id> paths.
+
+    Reads the /storage folder and /proc/mounts directly, so a drive shows up
+    even when Android doesn't report it to Kodi's own folder browser.
+    """
+    names = set()
     try:
-        names = sorted(os.listdir('/storage'))
+        names.update(os.listdir(storage_root))
     except OSError:
-        names = []
-    for name in names:
-        if name in ('emulated', 'self', 'sdcard0', 'sdcard1'):
+        pass
+    root = storage_root.rstrip('/') + '/'
+    for _dev, mnt, _typ in (_mounts() if mounts is None else mounts):
+        for prefix in (root, '/mnt/media_rw/'):
+            if mnt.startswith(prefix):
+                names.add(mnt[len(prefix):].split('/')[0])
+    out = []
+    for name in sorted(names):
+        if not name or name in NOT_DRIVES:
             continue
-        path = '/storage/' + name
+        path = storage_root.rstrip('/') + '/' + name
         if os.path.isdir(path):
-            out.append(('USB drive %s' % name, path))
+            out.append(path)
+    return out
+
+
+def volumes(storage_root='/storage', mounts=None):
+    """Drives worth offering on Android, USB drives first: [(label, root_path)]."""
+    out = [('USB drive %s' % os.path.basename(p), p) for p in usb_drives(storage_root, mounts)]
+    internal = storage_root.rstrip('/') + '/emulated/0'
     if os.path.isdir(internal):
-        out.append(('Internal storage', internal))
+        out.append(('Shield internal storage', internal))
     return out
 
 
@@ -99,6 +116,10 @@ def max_file_size(path):
 
 
 def describe(path):
-    free = free_space(path)
+    """'1.6 TB free of 2.0 TB' (the size helps tell drives apart)."""
     from .common import human_gb
-    return '%s free' % human_gb(free) if free is not None else 'free space unknown'
+    try:
+        usage = shutil.disk_usage(existing_parent(path))
+    except OSError:
+        return 'free space unknown'
+    return '%s free of %s' % (human_gb(usage.free), human_gb(usage.total))

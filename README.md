@@ -53,7 +53,10 @@ drive) at full line speed, and play them locally in Kodi's player.
    media → Allow management of all files**.
 3. Open the add-on's settings and paste your API key from <https://www.premiumize.me/account>.
    The Google TV app's keyboard on your phone can paste it.
-4. Pick a video in **My cloud**. The first time, it asks where downloads go: pick the USB drive.
+4. Pick a video in **My cloud**. The first time, it asks where downloads go: pick the USB drive
+   (listed as *USB drive <id>* with its free space and size). To change it later, use
+   **Settings → Downloads → Choose download folder...**. Kodi's own folder browser often doesn't
+   list USB drives on the Shield, and its "External storage" is the Shield's internal storage.
 
 ### Using it
 

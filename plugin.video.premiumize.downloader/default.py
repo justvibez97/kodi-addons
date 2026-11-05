@@ -285,30 +285,43 @@ def single_item(prem):
     return build_item(entry, [p for p in path.split('/') if p], entries, extra)
 
 
+NO_USB = ("Kodi can't see a USB drive.[CR]In the Shield's storage settings, check that the drive is set up "
+          'as removable storage, and that Kodi has "Allow management of all files" '
+          '(Settings > Apps > Kodi > Permissions > Files and media). Unplugging and replugging the drive '
+          'can help too.')
+
+
 def choose_root(reason=''):
     """Ask where downloads go; saves and returns the folder (or None)."""
-    options, paths = [], []
-    if storage.is_android():
-        for label, vol in storage.volumes():
-            options.append('%s  ·  %s' % (label, storage.describe(vol)))
-            paths.append(os.path.join(vol, 'Premiumize'))
-    options.append('Browse for a folder...')
-    paths.append(None)
-    heading = 'Where should downloads go?'
     if reason:
         DIALOG.ok('Download folder', reason)
-    choice = DIALOG.select(heading, options) if len(options) > 1 else 0
+    options, paths = [], []
+    if storage.is_android():
+        vols = storage.volumes()
+        if not any(label.startswith('USB') for label, _vol in vols):
+            DIALOG.ok('Download folder', NO_USB)
+        for label, vol in vols:
+            options.append('%s  ·  %s' % (label, storage.describe(vol)))
+            paths.append(os.path.join(vol, 'Premiumize'))
+    options += ['Enter a folder path...', 'Browse for a folder...']
+    paths += ['<enter>', None]
+    choice = DIALOG.select('Where should downloads go?', options)
     if choice < 0:
         return None
     folder = paths[choice]
-    if folder is None:
+    if folder == '<enter>':
+        folder = DIALOG.input('Folder path (e.g. /storage/1A2B-3C4D/Premiumize)',
+                              common.setting('download_path') or '/storage/').strip()
+        if not folder:
+            return None
+    elif folder is None:
         picked = DIALOG.browse(3, 'Choose the download folder', 'files', '', False, False,
                                common.setting('download_path'))
         if not picked:
             return None
         folder = xbmcvfs.translatePath(picked)
     if '://' in folder:
-        DIALOG.ok('Download folder', 'Pick a drive attached to this device (network shares aren\'t '
+        DIALOG.ok('Download folder', "Pick a drive attached to this device (network shares aren't "
                                      'supported for downloads).')
         return choose_root()
     problem = storage.check_writable(folder)
