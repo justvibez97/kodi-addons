@@ -44,3 +44,17 @@ class DialogProgressBG(object):
 
     def close(self):
         pass
+
+
+class DialogProgress(object):
+    def create(self, *a):
+        pass
+
+    def update(self, *a):
+        pass
+
+    def iscanceled(self):
+        return False
+
+    def close(self):
+        pass

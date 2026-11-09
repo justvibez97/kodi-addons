@@ -881,6 +881,18 @@ def action_speedtest():
         return DIALOG.ok('Speed test', str(exc))
     counts = [1, 4, 8, 12, 16]
     seconds = 10
+    # A running download shares the line with the test and skews every number.
+    resume_after = False
+    try:
+        if any(j['status'] == 'downloading' for j in client.status(wait=2)['jobs']):
+            if not DIALOG.yesno('Speed test', 'Pause downloads during the test so they don\'t '
+                                'skew the result? They resume afterwards.'):
+                return
+            client.cmd('pause_all')
+            resume_after = True
+            xbmc.sleep(2000)            # let their connections close first
+    except client.ServiceDown:
+        pass
     dlg = xbmcgui.DialogProgress()
     dlg.create('Speed test', 'Testing %s...' % ARGS.get('name', ''))
     results = []
@@ -909,6 +921,11 @@ def action_speedtest():
             results.append((n, d.stats()['speed'] or got / max(elapsed, 0.1)))
     finally:
         dlg.close()
+        if resume_after:
+            try:
+                client.cmd('resume_all')
+            except client.ServiceDown:
+                pass
     if not results:
         return
     current = common.setting_int('connections', 8)
