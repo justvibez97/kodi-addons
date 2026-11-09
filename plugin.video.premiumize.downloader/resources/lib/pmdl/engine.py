@@ -107,6 +107,7 @@ class Connection(object):
         self.conn = None
         self.key = None
         self.resp = None
+        self.gen = 0            # bumped by the engine to make every connection start fresh
 
     def close(self):
         conn, self.conn, self.resp = self.conn, None, None
@@ -361,6 +362,12 @@ class Downloader(object):
         self._rate_lock = threading.Lock()
         self._rate_next = 0.0
         self.takeovers = 0
+        self.reconnects = 0         # times the whole download switched to a fresh link
+        self._conn_gen = 0
+        self._best_speed = 0.0
+        self._slow_since = None
+        self._last_reconnect = 0.0
+        self._last_status_log = 0.0
 
     # ------------------------------------------------------------ public
 
@@ -402,6 +409,7 @@ class Downloader(object):
             'state': self.state, 'size': size, 'written': self.written, 'have': have,
             'speed': speed, 'eta': eta, 'connections': live, 'retrying': retrying, 'error': self.error,
             'note': self.note(buffered), 'write_speed': self._write_speed,
+            'buffered': buffered, 'reconnects': self.reconnects,
         }
 
     def _set_note(self, text):
@@ -547,6 +555,7 @@ class Downloader(object):
             if now - last_sample >= 0.5:
                 last_sample = now
                 self._sample(now)
+                self._check_degraded(now)
             if self.error is not None:
                 return
             if self._stop.is_set():
@@ -582,6 +591,65 @@ class Downloader(object):
         with self.cond:
             self.chunk = self._clamp_chunk(per_conn * 2.0 if per_conn > 0 else 8 * MB)
             self.min_split = max(2 * MB, min(16 * MB, int(per_conn)))
+
+    def _check_degraded(self, now):
+        """Start over on a fresh link when the speed collapses for no visible reason.
+
+        Seen on the Shield: a download starts at full speed, then after some
+        minutes its connections deliver a fraction of that with no errors,
+        while fresh connections (a new download, the speed test, another
+        device) get full speed from the same file at the same time. So when
+        the speed stays under half of this download's best for 45 s, and it
+        isn't the drive, a speed limit or an error we already know about,
+        fetch a new link (premiumize may hand out another server) and let
+        every connection reconnect.
+        """
+        if self.started_at and now - self.started_at > 20:
+            self._best_speed = max(self._best_speed, self._speed)
+        if now - self._last_status_log >= 60:
+            self._last_status_log = now
+            with self.cond:
+                buffered = sum(x.recv - x.start for x in self.segments)
+            self.log('status: net %.1f MB/s (best %.1f), disk %.1f MB/s, %d MB waiting, %d/%d connections '
+                     'active, %d retrying, %d taken over, %d reconnects' % (
+                         self._speed / MB, self._best_speed / MB, self._write_speed / MB, buffered // MB,
+                         self.active, self.connections - self.retired, self.retrying, self.takeovers,
+                         self.reconnects))
+        if self.max_rate or not self._best_speed or self._speed >= self._best_speed * 0.5:
+            self._slow_since = None
+            return
+        with self.cond:
+            buffered = sum(x.recv - x.start for x in self.segments)
+        if buffered >= self.max_buffer * 0.5 or self.retrying:
+            self._slow_since = None         # the drive or failing connections explain it
+            return
+        if self._slow_since is None:
+            self._slow_since = now
+            return
+        if now - self._slow_since < 45 or now - self._last_reconnect < 120:
+            return
+        self._slow_since = None
+        self._last_reconnect = now
+        slow, best = self._speed, self._best_speed
+        t = threading.Thread(target=self._reconnect_all, args=(slow, best), name='pmdl-reconnect')
+        t.daemon = True
+        t.start()
+
+    def _reconnect_all(self, slow, best):
+        old = self.url
+        try:
+            new = self._fresh_url(refresh=True, failed_url=old)
+        except Exception as exc:  # keep going on the old link
+            self.log('could not refresh the link: %s' % exc)
+            new = old
+        with self.cond:
+            self._conn_gen += 1
+            self.reconnects += 1
+        old_host = urllib.parse.urlsplit(old or '').netloc
+        new_host = urllib.parse.urlsplit(new or '').netloc
+        self._set_note('Speed dropped to %.0f MB/s: reconnecting' % (slow / MB))
+        self.log('speed fell to %.1f MB/s (best %.1f) for 45 s: fresh link (%s), all connections reconnect' % (
+            slow / MB, best / MB, 'new server %s' % new_host if new_host != old_host else 'same server'))
 
     def _fail(self, exc):
         with self.cond:
@@ -768,6 +836,9 @@ class Downloader(object):
                 seg.worker = None if seg.worker == wid else seg.worker
             return
         url = self.url
+        if conn.gen != self._conn_gen:
+            conn.close()
+            conn.gen = self._conn_gen
         try:
             resp = conn.get(url, start, end - 1)
         except DownloadError:

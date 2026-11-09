@@ -731,6 +731,11 @@ def progress_window(job_id=None):
             lines = [l for l in lines if l][:3]
             if st == 'downloading' and job.get('note'):
                 lines.append('[COLOR orange]%s[/COLOR]' % job['note'])     # why it's slow or waiting
+            elif st == 'downloading':
+                # What a photo of this window needs to show when something is off.
+                lines.append('[COLOR grey]Drive %.0f MB/s  ·  %d MB waiting to save  ·  %d reconnect%s[/COLOR]' % (
+                    (job.get('write_speed') or 0) / 1048576.0, (job.get('buffered') or 0) // 1048576,
+                    job.get('reconnects') or 0, '' if job.get('reconnects') == 1 else 's'))
             else:
                 lines.append('[COLOR grey]Cancel only closes this window. The download keeps going.[/COLOR]')
             dlg.update(pct, '[CR]'.join(l for l in lines if l))

@@ -28,6 +28,10 @@ class Behaviour(object):
     valid_token = 'a'             # requests with another ?t= get HTTP 403
     ranges = True
     trickle_first = False         # the request that starts at byte 0 crawls at 16 KB/s
+    also_valid = ()               # extra tokens the server accepts
+    degrade_after = None          # token 'a' slows to slow_rate after this many seconds
+    slow_rate = 0.2 * 1024 * 1024
+    t_first = None
     hang_at = None                # one response stops sending (socket stays open) after 1 MB
     requests = 0
     active = 0
@@ -64,7 +68,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         token = self.path.split('t=')[-1] if 't=' in self.path else ''
-        if token != B.valid_token:
+        if token != B.valid_token and token not in B.also_valid:
             return self._error(403)
         if active > B.max_conns:
             return self._error(B.over_limit_code)
@@ -88,6 +92,10 @@ class Handler(BaseHTTPRequestHandler):
         if B.drop_chance and length > 2 * MB and random.random() < B.drop_chance:
             drop_at = random.randint(MB, length - MB)
         rate = B.per_conn_rate
+        if B.degrade_after is not None and token == 'a':
+            B.t_first = B.t_first or time.time()
+        if B.degrade_after is not None and token == 'a' and time.time() - B.t_first >= B.degrade_after:
+            rate = B.slow_rate            # the old link's server got slow; a fresh link is fine
         if B.trickle_first and start == 0 and length > 1:
             B.trickle_first = False       # one slow connection, like a bad CDN path
             rate = 16 * 1024
@@ -113,6 +121,8 @@ class Handler(BaseHTTPRequestHandler):
                 except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                     return
                 sent += n
+                if B.degrade_after is not None and token == 'a' and time.time() - B.t_first >= B.degrade_after:
+                    rate = B.slow_rate
                 ahead = sent / rate - (time.time() - t0)
                 if ahead > 0:
                     time.sleep(ahead)
@@ -271,6 +281,18 @@ def main():
     r = run('drive write hangs', workdir, base, size, expect, deadline=40, sink=StuckSink(),
             write_stall_timeout=10)
     results.append(('done' if r[0].startswith('error: Writing') else r[0], None))
+
+    # The Shield pattern: the link's server slows down after a while, no errors;
+    # a fresh link is fast. The engine must notice and reconnect on its own.
+    B.per_conn_rate = 1 * MB
+    B.degrade_after = 25
+    B.also_valid = ('b',)
+    B.t_first = None
+    r = run('old link slows after 25 s, no errors', workdir, base, size, expect, connections=4,
+            refresh_token='b', deadline=110)
+    results.append(r[:2])
+    B.degrade_after = None
+    B.also_valid = ()
 
     # Speed limit: 8 connections that could do 48 MB/s, held to 10 MB/s in total.
     B.per_conn_rate = 6 * MB

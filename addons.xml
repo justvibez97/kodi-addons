@@ -39,7 +39,7 @@
         </assets>
     </extension>
 </addon>
-<addon id="plugin.video.premiumize.downloader" name="Premiumize Downloader" version="1.0.9" provider-name="justvibez97">
+<addon id="plugin.video.premiumize.downloader" name="Premiumize Downloader" version="1.0.10" provider-name="justvibez97">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
@@ -55,7 +55,8 @@
         <license>MIT</license>
         <website>https://github.com/justvibez97/kodi-addons</website>
         <source>https://github.com/justvibez97/kodi-addons</source>
-        <news>1.0.9: The speed test pauses running downloads during the test (and resumes them after), so they no longer skew its numbers.
+        <news>1.0.10: If a download slows to under half its best speed for 45 seconds with no visible reason, it gets a fresh link from premiumize and reconnects, as a manual restart would. The progress window shows drive speed, data waiting to be saved and reconnects.
+1.0.9: The speed test pauses running downloads during the test (and resumes them after), so they no longer skew its numbers.
 1.0.8: Shorter file names in the progress window, so long release names no longer hide the reason line.
 1.0.7: Settings > Downloads > Test drive speed: writes a test file for about 30 seconds and shows how fast the download drive really saves data (average and longest pause).
 1.0.6: Optional speed limit (Settings > Downloads) for networks that struggle at full speed. The progress window keeps long names to one line so the reason line stays visible, and shows a steady connection count with how many are retrying.

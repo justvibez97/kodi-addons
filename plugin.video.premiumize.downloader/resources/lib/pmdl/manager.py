@@ -153,7 +153,8 @@ class Manager(object):
                         item.update(have=st['have'], speed=st['speed'], eta=st['eta'],
                                     conns=st['connections'], retrying=st['retrying'],
                                     phase=dl.state, note=st['note'],
-                                    written=st['written'], write_speed=st['write_speed'])
+                                    written=st['written'], write_speed=st['write_speed'],
+                                    buffered=st['buffered'], reconnects=st['reconnects'])
                     else:
                         item['phase'] = 'starting'
                 out.append(item)
