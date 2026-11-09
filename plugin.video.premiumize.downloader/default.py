@@ -559,7 +559,7 @@ def job_label(job):
     return '[COLOR %s][%s][/COLOR]  %s' % (color, tag, job['name']), right
 
 
-def short(name, n=58):
+def short(name, n=46):
     """One line in a dialog: long release names would push the status lines out."""
     return name if len(name) <= n else name[:n - 3].rstrip('.') + '...'
 
