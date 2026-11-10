@@ -100,6 +100,13 @@ def root():
 
 # ======================================================================= cloud
 
+def live_job(job):
+    """The job, or None if it finished but its file has since been deleted (treat as not downloaded)."""
+    if job and job['status'] == 'done' and not os.path.exists(job['dest']):
+        return None
+    return job
+
+
 def job_tag(job):
     if not job:
         return ''
@@ -149,7 +156,7 @@ def list_entries(entries, fid, path, jobs, show_folders=True):
         video = common.is_video(e['name'], e.get('mime_type'))
         if not video and (not show_all or common.is_sub(e['name'])):
             continue
-        job = jobs.get(e['id'])
+        job = live_job(jobs.get(e['id']))
         size = e.get('size') or 0
         label = e['name'] + job_tag(job)
         li = item(label, 'DefaultVideo.png' if video else 'DefaultFile.png', common.human_size(size))
@@ -463,7 +470,7 @@ def action_play():
     file_id = ARGS['id']
     name = ARGS.get('name') or file_id
     mode = ARGS.get('mode', 'auto')
-    job = client.jobs_by_id(wait=3).get(file_id)
+    job = live_job(client.jobs_by_id(wait=3).get(file_id))
 
     if job and job['status'] == 'done' and os.path.exists(job['dest']) and mode != 'stream':
         return resolve(job['dest'], name, folder=folder_of(job))
@@ -538,8 +545,13 @@ def action_playjob():
     job = client.jobs_by_id(wait=3).get(ARGS['id'])
     if not job:
         return cancel_resolve()
-    if job['status'] == 'done' and os.path.exists(job['dest']):
-        return resolve(job['dest'], job['name'], folder=folder_of(job))
+    if job['status'] == 'done':
+        if os.path.exists(job['dest']):
+            return resolve(job['dest'], job['name'], folder=folder_of(job))
+        # Never start a whole new download behind the viewer's back.
+        DIALOG.ok(short(job['name']), 'This file has been deleted from the drive. Pick it in My cloud '
+                                      'to download or stream it again.')
+        return cancel_resolve()
     client.cmd('start_now', id=job['id'])
     resolve(client.stream_url(job['id'], job['name']), job['name'], common.mime_for(job['name']),
             [p for p in job.get('sub_paths') or [] if os.path.exists(p)], folder=folder_of(job))
