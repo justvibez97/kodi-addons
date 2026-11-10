@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.premiumize.downloader" name="Premiumize Downloader" version="1.0.13" provider-name="justvibez97">
+<addon id="plugin.video.premiumize.downloader" name="Premiumize Downloader" version="1.0.14" provider-name="justvibez97">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
@@ -15,7 +15,8 @@
         <license>MIT</license>
         <website>https://github.com/justvibez97/kodi-addons</website>
         <source>https://github.com/justvibez97/kodi-addons</source>
-        <news>1.0.13: "Delete from premiumize cloud" in the long-press menu of cloud files and folders. Asks first, keeps copies already downloaded, and cancels unfinished downloads of what is deleted.
+        <news>1.0.14: Storage in the main menu: a gauge of how full the download drive is and how much is free. Select it for details (folder, total, space taken by your downloads) or to change the folder.
+1.0.13: "Delete from premiumize cloud" in the long-press menu of cloud files and folders. Asks first, keeps copies already downloaded, and cancels unfinished downloads of what is deleted.
 1.0.12: A finished download whose file was deleted counts as not downloaded: selecting it asks again (Play now / Download / Stream) instead of quietly downloading the whole file again.
 1.0.11: Playback gets a clean title, year and type read from the release name (movie "Ran" (1985), or show, season and episode), so the Trakt add-on can scrobble downloads and Play now. Finished files in Downloads play through the add-on for the same reason.
 1.0.10: If a download slows to under half its best speed for 45 seconds with no visible reason, it gets a fresh link from premiumize and reconnects, as a manual restart would. The progress window shows drive speed, data waiting to be saved and reconnects.

@@ -94,8 +94,58 @@ def root():
     add(item('My cloud', 'DefaultNetwork.png'), url(action='cloud'))
     add(item('Downloads', 'DefaultHardDisk.png', summary), url(action='downloads'))
     add(item('Search my cloud', 'DefaultAddonsSearch.png'), url(action='search'))
+    storage_item(jobs)
     add(item('Settings', 'DefaultAddonProgram.png'), url(action='settings'), folder=False)
     end()
+
+
+def gauge(percent, width=20):
+    """A text bar for list labels (skins can't draw a real one in a plugin list)."""
+    filled = int(round(max(0.0, min(100.0, percent)) * width / 100.0))
+    color = 'red' if percent >= 95 else 'orange' if percent >= 85 else 'deepskyblue'
+    return '[COLOR %s]%s[/COLOR][COLOR 40FFFFFF]%s[/COLOR]' % (color, '|' * filled, '|' * (width - filled))
+
+
+def storage_summary(jobs):
+    """Text about the download drive, or (None, explanation) if there isn't one."""
+    folder = common.setting('download_path')
+    if not folder:
+        return None, 'No download folder yet. Select this to choose one.'
+    folder = xbmcvfs.translatePath(folder)
+    u = storage.usage(folder)
+    if u is None:
+        return None, '%s isn\'t available. Is the USB drive plugged in?' % folder
+    total, used, free = u
+    mine = [j for j in jobs.values() if j['status'] == 'done' and os.path.exists(j['dest'])]
+    lines = ['Download folder: %s' % folder,
+             '%s free of %s (%d%% used)' % (common.human_gb(free), common.human_gb(total), used * 100 // max(total, 1)),
+             'Finished downloads here: %d, using %s' % (len(mine), common.human_gb(sum(j['size'] for j in mine)))]
+    return (total, used, free), '[CR]'.join(lines)
+
+
+def storage_item(jobs):
+    numbers, text = storage_summary(jobs)
+    if numbers is None:
+        li = item('Storage  [COLOR orange](not available)[/COLOR]', 'DefaultHardDisk.png', '', text)
+        add(li, url(action='storage'), folder=False)
+        return
+    total, used, free = numbers
+    pct = used * 100.0 / max(total, 1)
+    # Some skins hide label2, so the free space goes in the label itself.
+    li = item('Storage  %s  %s free' % (gauge(pct, 14), common.human_gb(free)),
+              'DefaultHardDisk.png', '%d%% used' % pct, text)
+    add(li, url(action='storage'), folder=False)
+
+
+def action_storage():
+    numbers, text = storage_summary(client.jobs_by_id(wait=2))
+    if numbers is None:
+        if DIALOG.yesno('Storage', text, nolabel='Close', yeslabel='Choose folder'):
+            choose_root()
+        return
+    if DIALOG.yesno('Storage', text, nolabel='Close', yeslabel='Change folder'):
+        choose_root()
+    xbmc.executebuiltin('Container.Refresh')
 
 
 # ======================================================================= cloud
@@ -1047,6 +1097,8 @@ def main():
             progress_window(ARGS.get('id'))
         elif action == 'settings':
             common.addon().openSettings()
+        elif action == 'storage':
+            action_storage()
         elif action == 'choose_folder':
             choose_root()
         elif action == 'account':

@@ -117,6 +117,17 @@ def max_file_size(path):
     return FAT32_LIMIT if fs_type(path) in ('vfat', 'msdos') else None
 
 
+def usage(path):
+    """(total, used, free) bytes of the drive holding ``path``, or None if it isn't there."""
+    if not path or not os.path.isdir(path):
+        return None          # folder gone, e.g. the USB drive is unplugged
+    try:
+        u = shutil.disk_usage(path)
+    except OSError:
+        return None
+    return u.total, u.total - u.free, u.free
+
+
 def describe(path):
     """'1.6 TB free of 2.0 TB' (the size helps tell drives apart)."""
     from .common import human_gb
