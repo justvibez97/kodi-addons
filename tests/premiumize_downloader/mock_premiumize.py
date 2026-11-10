@@ -70,11 +70,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        length = int(self.headers.get('Content-Length') or 0)
+        self._body = dict(urllib.parse.parse_qsl(self.rfile.read(length).decode())) if length else {}
         self.do_GET()
 
     def do_GET(self):
         parts = urllib.parse.urlsplit(self.path)
         q = dict(urllib.parse.parse_qsl(parts.query))
+        q.update(getattr(self, '_body', {}))
         path = parts.path
         if path == '/ctl':
             if 'rate' in q:
@@ -107,6 +110,21 @@ class Handler(BaseHTTPRequestHandler):
             e['folder_id'] = TREE[item_id][1]
             e['status'] = 'success'
             return self._json(e)
+        if method in ('item/delete', 'folder/delete'):
+            target = q.get('id')
+            if target not in TREE:
+                return self._json({'status': 'error', 'code': 'not_found', 'message': 'not found'})
+            doomed = {target}
+            changed = True
+            while changed:                      # a folder takes everything inside it along
+                changed = False
+                for i, v in list(TREE.items()):
+                    if v[1] in doomed and i not in doomed:
+                        doomed.add(i)
+                        changed = True
+            for i in doomed:
+                TREE.pop(i, None)
+            return self._json({'status': 'success'})
         if method == 'folder/search':
             needle = q.get('q', '').lower()
             hits = [entry(i) for i, v in TREE.items() if i != 'root' and needle in v[0].lower()]

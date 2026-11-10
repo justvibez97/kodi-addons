@@ -135,6 +135,8 @@ def file_context(entry, fid, path, job):
     if done:
         ctx.append(('Delete from this device', run(action='job', cmd='delete_local', id=entry['id'])))
     ctx.append(('Speed test with this file', run(action='speedtest', id=entry['id'], name=entry['name'])))
+    ctx.append(('Delete from premiumize cloud', run(action='cloud_delete', kind='file', id=entry['id'],
+                                                   name=entry['name'], path=path)))
     ctx.append(('Go to Downloads', 'Container.Update(%s)' % url(action='downloads')))
     return ctx
 
@@ -150,7 +152,10 @@ def list_entries(entries, fid, path, jobs, show_folders=True):
                 continue        # subtitles come along with their video automatically
             sub_path = (path + '/' + e['name']).strip('/')
             li = item(e['name'], 'DefaultFolder.png')
-            li.addContextMenuItems([('Download whole folder', run(action='download_folder', id=e['id'], path=sub_path))])
+            li.addContextMenuItems([
+                ('Download whole folder', run(action='download_folder', id=e['id'], path=sub_path)),
+                ('Delete from premiumize cloud', run(action='cloud_delete', kind='folder', id=e['id'],
+                                                     name=e['name'], path=sub_path))])
             add(li, url(action='cloud', id=e['id'], path=sub_path))
     for e in files:
         video = common.is_video(e['name'], e.get('mime_type'))
@@ -210,7 +215,12 @@ def search():
         return fail_listing(str(exc))
     entries = data.get('content') or []
     for e in [e for e in entries if e.get('type') == 'folder']:
-        add(item(e['name'], 'DefaultFolder.png'), url(action='cloud', id=e['id'], path=e['name']))
+        li = item(e['name'], 'DefaultFolder.png')
+        li.addContextMenuItems([
+            ('Download whole folder', run(action='download_folder', id=e['id'], path=e['name'])),
+            ('Delete from premiumize cloud', run(action='cloud_delete', kind='folder', id=e['id'],
+                                                 name=e['name'], path=e['name']))])
+        add(li, url(action='cloud', id=e['id'], path=e['name']))
     list_entries(entries, None, '', client.jobs_by_id(), show_folders=False)
     if not entries:
         add(item('Nothing found for "%s"' % query, 'DefaultIconInfo.png'), url(action='search'))
@@ -901,6 +911,42 @@ def action_drivetest():
         common.human_size(total), elapsed, avg / 1048576.0, pause, drive_verdict(avg, pause)))
 
 
+def action_cloud_delete():
+    """Delete a file or folder from the premiumize cloud (asks first; local copies are kept)."""
+    kind, item_id, name = ARGS.get('kind'), ARGS['id'], ARGS.get('name', '')
+    path = (ARGS.get('path') or '').strip('/')
+    jobs = client.jobs_by_id(wait=2)
+    if kind == 'folder':
+        prefix = path + '/' if path else None
+        active = [j for j in jobs.values() if j['status'] != 'done' and prefix
+                  and (j.get('cloud_path') or '').startswith(prefix)]
+        what = 'the folder "%s" and everything in it' % short(name)
+    else:
+        active = [j for j in jobs.values() if j['id'] == item_id and j['status'] != 'done']
+        what = '"%s"' % short(name)
+    lines = ['Permanently delete %s from your premiumize cloud?' % what,
+             'Copies already downloaded to this device are kept.']
+    if active:
+        lines.append('[COLOR orange]%d unfinished download%s from it will be cancelled.[/COLOR]' % (
+            len(active), '' if len(active) == 1 else 's'))
+    if not DIALOG.yesno('Delete from premiumize cloud', '[CR]'.join(lines), nolabel='Keep', yeslabel='Delete'):
+        return
+    for job in active:
+        try:
+            client.cmd('cancel', id=job['id'])
+        except client.ServiceDown:
+            pass
+    try:
+        if kind == 'folder':
+            api().delete_folder(item_id)
+        else:
+            api().delete_item(item_id)
+    except ApiError as exc:
+        return DIALOG.ok('Delete from premiumize cloud', str(exc))
+    common.notify('Deleted from your cloud: %s' % short(name))
+    xbmc.executebuiltin('Container.Refresh')
+
+
 def action_speedtest():
     """Measure this file's download speed with different connection counts (nothing is saved)."""
     file_id = ARGS['id']
@@ -1009,6 +1055,8 @@ def main():
             action_pair()
         elif action == 'unpair':
             action_unpair()
+        elif action == 'cloud_delete':
+            action_cloud_delete()
         elif action == 'speedtest':
             action_speedtest()
         elif action == 'drivetest':

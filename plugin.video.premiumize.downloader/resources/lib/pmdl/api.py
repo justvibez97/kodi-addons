@@ -83,6 +83,12 @@ class Premiumize(object):
     def item_details(self, item_id):
         return self._call('item/details', {'id': item_id})
 
+    def delete_item(self, item_id):
+        return self._call('item/delete', data={'id': item_id})
+
+    def delete_folder(self, folder_id):
+        return self._call('folder/delete', data={'id': folder_id})
+
     def link(self, item_id):
         link = self.item_details(item_id).get('link')
         if not link:
