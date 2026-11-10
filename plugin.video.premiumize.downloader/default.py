@@ -434,9 +434,18 @@ def action_download_folder():
     enqueue(found)
 
 
-def resolve(path, name, mime=None, subs=None):
+def folder_of(job=None):
+    """The cloud folder name of the file being played (helps read odd file names)."""
+    if job and job.get('cloud_path'):
+        parts = job['cloud_path'].split('/')
+        return parts[-2] if len(parts) > 1 else None
+    path = ARGS.get('path') or ''
+    return path.rstrip('/').split('/')[-1] or None
+
+
+def resolve(path, name, mime=None, subs=None, folder=None):
     li = xbmcgui.ListItem(name, path=path, offscreen=True)
-    set_info(li, name)
+    common.play_meta(li, name, folder)
     if mime:
         li.setMimeType(mime)
         li.setContentLookup(False)
@@ -457,7 +466,7 @@ def action_play():
     job = client.jobs_by_id(wait=3).get(file_id)
 
     if job and job['status'] == 'done' and os.path.exists(job['dest']) and mode != 'stream':
-        return resolve(job['dest'], name)
+        return resolve(job['dest'], name, folder=folder_of(job))
 
     if mode == 'auto':
         if job:                       # already queued or downloading: just watch it
@@ -477,7 +486,7 @@ def action_play():
         prem = api()
         if mode == 'stream':
             link = prem.link(file_id)
-            return resolve(link, name, common.mime_for(name))
+            return resolve(link, name, common.mime_for(name), folder=folder_of())
         it = single_item(prem)
     except ApiError as exc:
         DIALOG.ok('Premiumize Downloader', str(exc))
@@ -493,7 +502,8 @@ def action_play():
         return cancel_resolve()
     local_subs = [p for p in (job or {}).get('sub_paths') or [] if os.path.exists(p)]
     subs = local_subs or [s['link'] for s in it['subs'] if s.get('link')]
-    resolve(client.stream_url(file_id, it['name']), it['name'], common.mime_for(it['name']), subs)
+    resolve(client.stream_url(file_id, it['name']), it['name'], common.mime_for(it['name']), subs,
+            folder=folder_of())
 
 
 CHOICES = ['Play now (keeps downloading in the background)', 'Download only', 'Stream from cloud (no download)']
@@ -529,10 +539,10 @@ def action_playjob():
     if not job:
         return cancel_resolve()
     if job['status'] == 'done' and os.path.exists(job['dest']):
-        return resolve(job['dest'], job['name'])
+        return resolve(job['dest'], job['name'], folder=folder_of(job))
     client.cmd('start_now', id=job['id'])
     resolve(client.stream_url(job['id'], job['name']), job['name'], common.mime_for(job['name']),
-            [p for p in job.get('sub_paths') or [] if os.path.exists(p)])
+            [p for p in job.get('sub_paths') or [] if os.path.exists(p)], folder=folder_of(job))
 
 
 # ======================================================================= downloads list
@@ -613,7 +623,9 @@ def downloads():
                    ('Clear finished from list', run(action='job', cmd='clear_finished'))]
             li.addContextMenuItems(ctx + common_ctx)
             if exists:
-                add(li, job['dest'], folder=False)       # plays the local file directly
+                # Resolved through the add-on so playback gets a clean title for Trakt.
+                li.setProperty('IsPlayable', 'true')
+                add(li, url(action='playjob', id=jid), folder=False)
             else:
                 add(li, url(action='job', cmd='forget', id=jid), folder=False)
             continue

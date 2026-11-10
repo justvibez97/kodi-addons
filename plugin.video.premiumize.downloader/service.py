@@ -84,6 +84,8 @@ def announce(kind, job, player):
         if xbmcgui.Dialog().yesno('Download complete', '%s is ready.[CR]Play it now?' % job['name'],
                                   nolabel='Later', yeslabel='Play'):
             item = xbmcgui.ListItem(job['name'], path=job['dest'])
+            parts = (job.get('cloud_path') or '').split('/')
+            common.play_meta(item, job['name'], parts[-2] if len(parts) > 1 else None)
             player.play(job['dest'], item)
         return
     common.notify(job['name'], 'Download complete', 5000)

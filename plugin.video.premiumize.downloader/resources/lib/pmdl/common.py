@@ -25,6 +25,44 @@ MIME = {'.mkv': 'video/x-matroska', '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.
         '.flv': 'video/x-flv', '.vob': 'video/mpeg', '.ogv': 'video/ogg', '.3gp': 'video/3gpp'}
 
 
+def play_meta(li, name, folder=None):
+    """Give a ListItem about to play a clean title, year and type.
+
+    Kodi shows these during playback, and the Trakt add-on uses them to
+    scrobble videos that aren't in the library (it matches title + year, or
+    show + season + episode). Unreadable names keep the plain file name.
+    """
+    from .naming import parse
+    info = parse(name, folder)
+    kind = info['type']
+    try:
+        tag = li.getVideoInfoTag()
+    except AttributeError:   # Kodi 19
+        tag = None
+    if kind == 'movie':
+        values = {'mediatype': 'movie', 'title': info['title'], 'year': info['year']}
+    elif kind == 'episode':
+        values = {'mediatype': 'episode', 'tvshowtitle': info['show'], 'season': info['season'],
+                  'episode': info['episode'],
+                  'title': '%s S%02dE%02d' % (info['show'], info['season'], info['episode'])}
+        if info['year']:
+            values['year'] = info['year']
+    else:
+        values = {'mediatype': 'video', 'title': name}
+    if tag is None:
+        li.setInfo('video', values)
+        return info
+    tag.setMediaType(values['mediatype'])
+    tag.setTitle(values['title'])
+    if values.get('year'):
+        tag.setYear(int(values['year']))
+    if kind == 'episode':
+        tag.setTvShowTitle(values['tvshowtitle'])
+        tag.setSeason(int(values['season']))
+        tag.setEpisode(int(values['episode']))
+    return info
+
+
 def addon():
     return xbmcaddon.Addon(ADDON_ID)
 
