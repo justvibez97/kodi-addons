@@ -289,6 +289,42 @@ class LetterboxdRSSClient:
         )
         return lists, has_next
 
+    # Letterboxd's /lists/ page (featured + popular in one) sits behind a
+    # Cloudflare bot check since Nov 2026 and returns 403 "Just a moment...".
+    # Its two halves are still served normally on their own pages.
+    _LIST_HUB_PAGES = ("/lists/popular/", "/lists/featured/")
+
+    def get_featured_and_popular_lists(self):
+        """
+        This week's popular lists followed by Letterboxd's featured lists,
+        with duplicates removed. Each page is fetched on its own, so one being
+        blocked still shows the other. Raises only if neither page loads.
+        (Page 2 of /lists/popular/ is blocked too, so there is no pagination.)
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        def fetch(path):
+            try:
+                return self.get_public_lists_at(_BASE + path)[0], None
+            except Exception as exc:
+                xbmc.log(f"[Letterboxd] list hub {path} failed: {exc}", xbmc.LOGWARNING)
+                return [], f"{path}: {exc}"
+
+        # Both pages at once (the featured page alone is ~1.4 MB); map keeps order.
+        with ThreadPoolExecutor(max_workers=len(self._LIST_HUB_PAGES)) as pool:
+            results = list(pool.map(fetch, self._LIST_HUB_PAGES))
+
+        combined, seen = [], set()
+        errors = [err for _, err in results if err]
+        for lists, _ in results:
+            for lst in lists:
+                if lst["path"] not in seen:
+                    seen.add(lst["path"])
+                    combined.append(lst)
+        if not combined and errors:
+            raise RuntimeError("; ".join(errors))
+        return combined
+
     def get_public_list_films(self, path, lb_page=1, offset=0, limit=20):
         """
         Scrape films from a public list with virtual pagination.

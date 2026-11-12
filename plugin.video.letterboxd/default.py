@@ -523,11 +523,19 @@ def show_public_lists_page():
 
     client = LetterboxdRSSClient("")
     try:
-        lists, has_next = client.get_public_lists_at(lb_url, page=current_page)
+        if lb_url.rstrip("/") == "https://letterboxd.com/lists":
+            # /lists/ itself is now behind a Cloudflare bot check (403); build
+            # the same section from its popular + featured pages instead.
+            lists, has_next = client.get_featured_and_popular_lists(), False
+        else:
+            lists, has_next = client.get_public_lists_at(lb_url, page=current_page)
     except Exception as exc:
         log(f"Public lists page: {exc}", xbmc.LOGERROR)
-        # 403 on page 2+ is a known Letterboxd restriction — treat as end of list
-        # rather than surfacing an error dialog to the user.
+        # 403 on page 2+ is a known Letterboxd restriction — treat as end of list.
+        # A failed first page is an actual failure: say so instead of showing
+        # an empty folder.
+        if current_page == 1:
+            notify_error(section_name, "Letterboxd didn't return any lists. Try again later.")
         xbmcplugin.setPluginCategory(HANDLE, section_name)
         end_of_directory(HANDLE)
         return
