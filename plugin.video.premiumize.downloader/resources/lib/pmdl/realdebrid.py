@@ -28,7 +28,7 @@ OAUTH = os.environ.get('PMDL_RD_OAUTH') or 'https://api.real-debrid.com/oauth/v2
 OPEN_CLIENT_ID = 'X245A4XAIBGVM'        # Real-Debrid's public client id for open-source apps
 DEVICE_GRANT = 'http://oauth.net/grant_type/device/1.0'
 USER_AGENT = 'Kodi-DebridDownloader/1.1'
-PAGE = 500
+PAGE = 100          # Real-Debrid leaves out every torrent's links when asked for more than 100
 trace = None        # set to a log function to record every request (no tokens are logged)
 
 # Real-Debrid error_code -> (our error code, message). Our codes match the
@@ -172,7 +172,8 @@ class RealDebrid(object):
         out, page = [], 1
         while True:
             # Pages, not offsets: Real-Debrid answers offset=0 with "204 No Content"
-            # however many torrents there are (seen 2026-11-13).
+            # however many torrents there are, and with limit over 100 it sends
+            # every torrent without its links (both seen 2026-11-13).
             batch, hdrs = self._call('GET', 'torrents', {'page': page, 'limit': PAGE}, with_headers=True)
             batch = batch or []
             out += batch
@@ -180,7 +181,7 @@ class RealDebrid(object):
                 total = int(hdrs.get('X-Total-Count'))
             except (TypeError, ValueError):
                 total = None
-            if len(batch) < PAGE or (total is not None and len(out) >= total) or page >= 100:
+            if len(batch) < PAGE or (total is not None and len(out) >= total) or page >= 500:
                 break
             page += 1
         out.sort(key=lambda t: t.get('added') or '', reverse=True)

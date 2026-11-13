@@ -161,6 +161,11 @@ try:
     print('\n4. Inside torrents')
     t1 = listing(default.rd_torrent, id='T1')
     check(labels(t1) == ['Test.Movie.2026.1080p.avi'], 'T1 shows its video, subtitle hidden: %s' % labels(t1))
+    realdebrid.PAGE = 100
+    full = sources.rd().torrents()
+    check(all(t['links'] for t in full if t['status'] == 'downloaded'),
+          'pages of 100 keep the download links (Real-Debrid drops them above 100)')
+    realdebrid.PAGE = 2
     t4 = sources.rd().files(sources.rd().torrent_info('T4'))
     check([e['name'] for e in t4] == ['Packed.Pack.rar'], 'packed torrent: names learnt from unrestrict')
 
@@ -173,6 +178,7 @@ try:
     check(it2['rel'] == [] and it2['size'] == size, 'single-file torrent saved without an extra folder')
 
     print('\n6. Play now: stream while downloading, then finish')
+    ctl('reset_counts=1')
     client.cmd('enqueue', items=[it1], root=os.path.join(WORK, 'dl'), start_id='rd:T1:0')
     url = client.stream_url('rd:T1:0', it1['name'])
     status, data = get_range(url, 0, 16 * 1024 * 1024 - 1)
@@ -184,6 +190,10 @@ try:
     check(j['status'] == 'downloading' and (j.get('conns') or 0) >= 6, 'downloading with %s connections at %s' % (
         j.get('conns'), common.human_speed(j.get('speed'))))
     check(wait(lambda: (job('rd:T1:0') or {}).get('status') == 'done', 240), 'finished')
+    requests = ctl()['requests']
+    check(any('using long requests' in m for m in xbmc.LOG), 'noticed the server closes every connection')
+    check(requests <= (size >> 20) // 10, 'long requests: %d requests for %d MB (8 MB pieces would need ~%d)' % (
+        requests, size >> 20, (size >> 20) // 8))
     j = job('rd:T1:0')
     check(sha(j['dest']) == sha(VIDEO), 'file is byte-identical')
     folder = os.path.dirname(j['dest'])

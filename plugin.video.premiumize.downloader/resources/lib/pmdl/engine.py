@@ -365,6 +365,11 @@ class Downloader(object):
         self.takeovers = 0
         self.reconnects = 0         # times the whole download switched to a fresh link
         self._conn_gen = 0
+        # Servers that close the connection after every response (Real-Debrid does)
+        # make each request a new TLS connection, and they reset new connections
+        # that come too fast. For them, requests are made long and few.
+        self._server_closes = 0
+        self.no_keepalive = False
         self._best_speed = 0.0
         self._slow_since = None
         self._last_reconnect = 0.0
@@ -515,7 +520,10 @@ class Downloader(object):
             return url
 
     def _clamp_chunk(self, value):
-        cap = max(1 * MB, self.max_buffer // (2 * self.connections))
+        # Keep-alive servers: half the buffer in flight, so there is always room
+        # for the next piece. Others: the whole buffer, for fewer, longer requests.
+        share = self.connections if self.no_keepalive else 2 * self.connections
+        cap = max(1 * MB, self.max_buffer // share)
         value = min(max(int(value), 1 * MB), cap, 64 * MB)
         return (value // (64 * 1024)) * 64 * 1024 or 64 * 1024
 
@@ -585,13 +593,15 @@ class Downloader(object):
             self._speed = inst if self._speed == 0 else self._speed * 0.6 + inst * 0.4
             winst = (written - w0) / (now - t0)
             self._write_speed = winst if self._write_speed == 0 else self._write_speed * 0.6 + winst * 0.4
-        # Size segments so each connection works ~2 s per request: fewer
-        # round trips at high speed, finer splitting at low speed.
+        # Size segments so each connection works ~2 s per request (~8 s when
+        # every request costs a new connection): fewer round trips at high
+        # speed, finer splitting at low speed.
         live = max(1, self.connections - self.retired)
         per_conn = self._speed / live
+        secs = 8.0 if self.no_keepalive else 2.0
         with self.cond:
-            self.chunk = self._clamp_chunk(per_conn * 2.0 if per_conn > 0 else 8 * MB)
-            self.min_split = max(2 * MB, min(16 * MB, int(per_conn)))
+            self.chunk = self._clamp_chunk(per_conn * secs if per_conn > 0 else 8 * MB)
+            self.min_split = max(2 * MB, min(16 * MB, int(per_conn * (3.0 if self.no_keepalive else 1.0))))
 
     def _check_degraded(self, now):
         """Start over on a fresh link when the speed collapses for no visible reason.
@@ -896,6 +906,11 @@ class Downloader(object):
                     break
         finally:
             if clean:
+                if resp.will_close and not self.no_keepalive:
+                    self._server_closes += 1
+                    if self._server_closes >= 3:
+                        self.no_keepalive = True
+                        self.log('the server closes every connection after one request: using long requests')
                 conn.finish_response()
             else:
                 conn.close()

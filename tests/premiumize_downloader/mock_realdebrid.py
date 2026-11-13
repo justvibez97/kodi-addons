@@ -126,6 +126,8 @@ class Handler(BaseHTTPRequestHandler):
                 STATE['approved'] = True
             if q.get('revoke'):
                 STATE['tokens'] = []
+            if q.get('reset_counts'):
+                STATE.update(requests=0, peak=0)
             return self._json(dict(STATE, tokens=len(STATE['tokens'])))
         if path.startswith('/oauth/v2/'):
             return self._oauth(method, path[len('/oauth/v2/'):], q)
@@ -183,6 +185,9 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 offset = int(q.get('offset') or 0)
             page = items[offset:offset + limit]
+            if limit > 100:
+                # Also like the real one: asked for more than 100, it leaves out the links.
+                page = [dict(t, links=[]) for t in page]
             if not page:
                 return self._json(None, 204, {'X-Total-Count': str(len(items))})
             return self._json(page, 200, {'X-Total-Count': str(len(items))})
@@ -231,6 +236,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(length))
         self.send_header('Accept-Ranges', 'bytes')
         self.send_header('Content-Type', 'application/octet-stream')
+        # Real-Debrid's download servers close the connection after every response.
+        self.send_header('Connection', 'close')
+        self.close_connection = True
         self.end_headers()
         with LOCK:
             STATE['requests'] += 1
