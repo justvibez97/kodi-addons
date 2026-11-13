@@ -228,7 +228,15 @@ def _enrich_and_add(films, fetch_lb_rating=True):
                 "meta":   json.dumps(_umbrella_meta(film)),
             }.items() if v}
             direct_url = f"plugin://{player}/?{urllib.parse.urlencode(play_params)}"
-            add_film_item(HANDLE, film, BASE_URL, direct_url=direct_url)
+            # Same request as Umbrella's own "Rescrape Item with All Providers -
+            # Source Select": fresh scrape (rescrape), every provider enabled,
+            # then the source picker (select=0) instead of autoplay. PlayMedia,
+            # because Umbrella resolves on a real playback handle.
+            scrape_all_url = direct_url + "&" + urllib.parse.urlencode(
+                {"all_providers": "true", "rescrape": "true", "select": "0"})
+            add_film_item(HANDLE, film, BASE_URL, direct_url=direct_url, context_items=[
+                ("Scrape all providers", f'PlayMedia("{scrape_all_url}")'),
+            ])
         else:
             # No title yet — fall back to our own play handler, which looks
             # up TMDB/IMDB IDs before handing off to Umbrella.

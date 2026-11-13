@@ -34,12 +34,14 @@ def add_directory_item(handle, label, url, icon="", is_folder=True, info=None):
     xbmcplugin.addDirectoryItem(handle, url, li, isFolder=is_folder)
 
 
-def add_film_item(handle, film, base_url, mode="play", direct_url=None):
+def add_film_item(handle, film, base_url, mode="play", direct_url=None, context_items=None):
     """
     Add a film item to the Kodi directory listing.
 
     If *direct_url* is supplied the item URL is set to that value directly
     (e.g. a pre-built plugin://plugin.video.umbrella/? URL).
+    *context_items* is a list of (label, builtin) pairs added to the item's
+    context menu.
     """
     name = film.get("name") or "Unknown"
     year = str(film.get("year") or "")
@@ -149,6 +151,9 @@ def add_film_item(handle, film, base_url, mode="play", direct_url=None):
         if year:
             params["film_year"] = year
         url = f"{base_url}?{urllib.parse.urlencode(params)}"
+
+    if context_items:
+        li.addContextMenuItems(context_items)
 
     xbmcplugin.addDirectoryItem(handle, url, li, isFolder=False)
 
