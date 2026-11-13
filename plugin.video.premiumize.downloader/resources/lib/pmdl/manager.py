@@ -412,7 +412,7 @@ class Manager(object):
             if runner.stopping:
                 raise engine.Stopped()
 
-            connections = max(1, min(16, common.setting_int('connections', 8)))
+            connections = sources.connections_for(job_id)
             if sources.is_rd(job_id):
                 self.link(job_id, refresh=True)     # also tells how many connections Real-Debrid allows
                 chunks = self._chunks.get(job_id) or 0

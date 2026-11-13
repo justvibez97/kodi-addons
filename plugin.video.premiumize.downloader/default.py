@@ -1311,13 +1311,16 @@ def action_speedtest():
                 pass
     if not results:
         return
-    current = common.setting_int('connections', 8)
+    # Each service has its own setting: they reach full speed with different counts.
+    current = sources.connections_for(file_id)
+    service = sources.service_name(file_id)
     summary = 'MB/s by connections:  ' + '   '.join('%d: %.1f' % (n, sp / 1048576.0) for n, sp in results)
     pick, verdict = speedtest_advice(results, current)
     if pick == current:
-        DIALOG.ok('Speed test', '%s[CR]%s[CR]Keeping %d connections.' % (summary, verdict, current))
-    elif DIALOG.yesno('Speed test', '%s[CR]%s[CR]Switch from %d to %d connections?' % (summary, verdict, current, pick)):
-        common.set_setting('connections', str(pick))
+        DIALOG.ok('Speed test', '%s[CR]%s[CR]Keeping %d connections for %s.' % (summary, verdict, current, service))
+    elif DIALOG.yesno('Speed test', '%s[CR]%s[CR]Switch %s from %d to %d connections?' % (
+            summary, verdict, service, current, pick)):
+        common.set_setting(sources.connections_key(file_id), str(pick))
 
 
 # ======================================================================= router

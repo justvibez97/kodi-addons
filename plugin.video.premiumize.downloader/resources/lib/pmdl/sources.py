@@ -40,6 +40,16 @@ def rd_configured():
     return realdebrid.configured(SettingsStore())
 
 
+def connections_key(any_id):
+    """The setting that holds how many connections downloads from this file's service use."""
+    return 'rd_connections' if is_rd(any_id) else 'connections'
+
+
+def connections_for(any_id):
+    default = 12 if is_rd(any_id) else 8
+    return max(1, min(16, common.setting_int(connections_key(any_id), default)))
+
+
 def service_name(any_id):
     return 'Real-Debrid' if is_rd(any_id) else 'premiumize'
 

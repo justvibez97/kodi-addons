@@ -30,7 +30,7 @@ import xbmc  # noqa: E402
 import xbmcaddon  # noqa: E402
 import xbmcgui  # noqa: E402
 import xbmcplugin  # noqa: E402
-xbmcaddon.SETTINGS.update(api_key='testkey', download_path=os.path.join(WORK, 'dl'), connections=8, buffer_mb=128,
+xbmcaddon.SETTINGS.update(api_key='testkey', download_path=os.path.join(WORK, 'dl'), connections=8, rd_connections=10, buffer_mb=128,
                           subtitles='true', max_concurrent=1, resume_on_start='true', auto_retry='false',
                           server_port=LOCAL_PORT, click_action=0, show_all_files='false')
 from pmdl import client, common, realdebrid, sources  # noqa: E402
@@ -187,13 +187,16 @@ try:
     check(data == source_bytes(size - (2 << 20), 2 << 20), 'seek to the end served before it is downloaded')
     wait(lambda: (job('rd:T1:0') or {}).get('speed'), 20)
     j = job('rd:T1:0')
-    check(j['status'] == 'downloading' and (j.get('conns') or 0) >= 6, 'downloading with %s connections at %s' % (
+    check(j['status'] == 'downloading' and j.get('conns') == 10, 'Real-Debrid setting used: %s connections at %s' % (
         j.get('conns'), common.human_speed(j.get('speed'))))
     check(wait(lambda: (job('rd:T1:0') or {}).get('status') == 'done', 240), 'finished')
     requests = ctl()['requests']
     check(any('using long requests' in m for m in xbmc.LOG), 'noticed the server closes every connection')
-    check(requests <= (size >> 20) // 10, 'long requests: %d requests for %d MB (8 MB pieces would need ~%d)' % (
-        requests, size >> 20, (size >> 20) // 8))
+    # Before 1.1.2 a piece was at most 8 MB and at most half the buffer spread over the connections.
+    old_piece = min(8.0, 128.0 / (2 * 10))
+    old_requests = (size >> 20) / old_piece
+    check(requests < old_requests * 0.75, 'long requests: %d requests for %d MB (old sizing: ~%d)' % (
+        requests, size >> 20, old_requests))
     j = job('rd:T1:0')
     check(sha(j['dest']) == sha(VIDEO), 'file is byte-identical')
     folder = os.path.dirname(j['dest'])
@@ -256,6 +259,13 @@ try:
     del xbmcplugin.RESOLVED[:]
     action(default.action_play, id='rd:T2:0', fid='T2', path='', name='Single.Movie.2025.720p.avi', mode='stream')
     check(xbmcplugin.RESOLVED and xbmcplugin.RESOLVED[-1][1].path == link, 'stream plays the Real-Debrid link')
+
+    print('\n12b. A speed test on a Real-Debrid file changes only the Real-Debrid setting')
+    xbmcgui.YESNO[:] = [True]
+    action(default.action_speedtest, id='rd:T2:0', name='Single.Movie.2025.720p.avi')
+    st = xbmcaddon.SETTINGS
+    check(str(st.get('rd_connections')) != '10' and str(st.get('connections')) == '8',
+          'Real-Debrid now %s, premiumize still %s' % (st.get('rd_connections'), st.get('connections')))
 
     print('\n13. Sign out, then a private API token instead')
     action(default.action_rd_unpair)

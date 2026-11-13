@@ -89,11 +89,11 @@ msgid "Choose download folder..."
 msgstr ""
 
 msgctxt "#30203"
-msgid "Connections per download"
+msgid "Connections per download: premiumize"
 msgstr ""
 
 msgctxt "#30210"
-msgid "More connections usually means more speed, up to what your line allows. Long-press a video and pick \"Speed test with this file\" to find the best number."
+msgid "More connections usually means more speed, up to what your line allows. Long-press a video and pick \"Speed test with this file\": it finds the best number for that file's service."
 msgstr ""
 
 msgctxt "#30204"
@@ -230,6 +230,10 @@ msgstr ""
 
 msgctxt "#30225"
 msgid "40 MB/s (320 Mbit/s)"
+msgstr ""
+
+msgctxt "#30228"
+msgid "Connections per download: Real-Debrid"
 msgstr ""
 
 msgctxt "#30226"
