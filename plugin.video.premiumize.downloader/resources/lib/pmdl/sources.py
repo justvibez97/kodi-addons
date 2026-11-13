@@ -8,6 +8,7 @@ from . import common, realdebrid
 from .api import ApiError, Premiumize
 
 is_rd = realdebrid.is_rd
+realdebrid.trace = common.debug     # Settings > Advanced > debug logging shows each Real-Debrid request
 
 
 class SettingsStore(object):

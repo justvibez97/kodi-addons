@@ -39,7 +39,7 @@
         </assets>
     </extension>
 </addon>
-<addon id="plugin.video.premiumize.downloader" name="Debrid Downloader" version="1.1.0" provider-name="justvibez97">
+<addon id="plugin.video.premiumize.downloader" name="Debrid Downloader" version="1.1.1" provider-name="justvibez97">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
@@ -55,7 +55,8 @@
         <license>MIT</license>
         <website>https://github.com/justvibez97/kodi-addons</website>
         <source>https://github.com/justvibez97/kodi-addons</source>
-        <news>1.1.0: Real-Debrid support, and the add-on is now called Debrid Downloader. Sign in with a code from the main menu ("Add Real-Debrid"), then "Real-Debrid torrents" lists your torrents: download, play while downloading, stream, speed test and delete work as they do for premiumize. Search looks in both. premiumize settings and downloads are unchanged.
+        <news>1.1.1: Fixes "Real-Debrid torrents" showing an empty list: Real-Debrid returns nothing for the way 1.1.0 asked for the list. Checked on a real account.
+1.1.0: Real-Debrid support, and the add-on is now called Debrid Downloader. Sign in with a code from the main menu ("Add Real-Debrid"), then "Real-Debrid torrents" lists your torrents: download, play while downloading, stream, speed test and delete work as they do for premiumize. Search looks in both. premiumize settings and downloads are unchanged.
 1.0.14: Storage in the main menu: a gauge of how full the download drive is and how much is free. Select it for details (folder, total, space taken by your downloads) or to change the folder.
 1.0.13: "Delete from premiumize cloud" in the long-press menu of cloud files and folders. Asks first, keeps copies already downloaded, and cancels unfinished downloads of what is deleted.
 1.0.12: A finished download whose file was deleted counts as not downloaded: selecting it asks again (Play now / Download / Stream) instead of quietly downloading the whole file again.

@@ -173,7 +173,15 @@ class Handler(BaseHTTPRequestHandler):
                                'expiration': '2027-02-20T10:00:00.000Z'})
         if what == 'torrents' and method == 'GET':
             items = [torrent_json(t) for t in sorted(TORRENTS)]
-            offset, limit = int(q.get('offset') or 0), int(q.get('limit') or 100)
+            limit = int(q.get('limit') or 100)
+            if 'offset' in q and int(q['offset']) == 0:
+                # What the real Real-Debrid does (checked 2026-11-13): offset=0 gets
+                # "204 No Content" even when the account has torrents.
+                return self._json(None, 204)
+            if 'page' in q:
+                offset = (int(q['page']) - 1) * limit
+            else:
+                offset = int(q.get('offset') or 0)
             page = items[offset:offset + limit]
             if not page:
                 return self._json(None, 204, {'X-Total-Count': str(len(items))})

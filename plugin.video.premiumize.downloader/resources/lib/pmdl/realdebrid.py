@@ -29,6 +29,7 @@ OPEN_CLIENT_ID = 'X245A4XAIBGVM'        # Real-Debrid's public client id for ope
 DEVICE_GRANT = 'http://oauth.net/grant_type/device/1.0'
 USER_AGENT = 'Kodi-DebridDownloader/1.1'
 PAGE = 500
+trace = None        # set to a log function to record every request (no tokens are logged)
 
 # Real-Debrid error_code -> (our error code, message). Our codes match the
 # premiumize ones where they mean the same, so the queue treats them alike.
@@ -72,6 +73,15 @@ def _request(method, url, data=None, token=None, timeout=25):
     except (urllib.error.URLError, OSError) as exc:
         reason = getattr(exc, 'reason', exc)
         raise ApiError('Can\'t reach Real-Debrid (%s). Check the internet connection.' % reason)
+    if trace and url.startswith(API):
+        # Sign-in calls (OAUTH) are never logged: their replies carry secrets. Reply
+        # text is only shown for errors, where it says what went wrong.
+        try:
+            trace('Real-Debrid %s %s -> HTTP %d, total=%s, %d bytes%s' % (
+                method, url[len(API):], status, hdrs.get('X-Total-Count'), len(raw),
+                (': ' + ' '.join(raw[:200].decode('utf-8', 'replace').split())) if status >= 400 else ''))
+        except Exception:
+            pass
     if not raw.strip():
         return None, status, hdrs
     try:
@@ -159,18 +169,20 @@ class RealDebrid(object):
 
     def torrents(self):
         """Every torrent in the account, newest first."""
-        out, offset = [], 0
+        out, page = [], 1
         while True:
-            batch, hdrs = self._call('GET', 'torrents', {'offset': offset, 'limit': PAGE}, with_headers=True)
+            # Pages, not offsets: Real-Debrid answers offset=0 with "204 No Content"
+            # however many torrents there are (seen 2026-11-13).
+            batch, hdrs = self._call('GET', 'torrents', {'page': page, 'limit': PAGE}, with_headers=True)
             batch = batch or []
             out += batch
             try:
                 total = int(hdrs.get('X-Total-Count'))
             except (TypeError, ValueError):
                 total = None
-            offset += len(batch)
-            if len(batch) < PAGE or (total is not None and offset >= total) or offset > 50000:
+            if len(batch) < PAGE or (total is not None and len(out) >= total) or page >= 100:
                 break
+            page += 1
         out.sort(key=lambda t: t.get('added') or '', reverse=True)
         return out
 
