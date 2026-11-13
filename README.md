@@ -79,8 +79,8 @@ settings and downloads carry over.
 | Pause / resume / cancel | **Downloads** → select the item |
 | Watch a downloaded file | Select it in your cloud (marked *downloaded*) or in **Downloads** |
 | A whole Real-Debrid torrent | Long-press the torrent → **Download whole torrent** |
-| Remove it from the cloud | Long-press → **Delete from premiumize cloud** / **Delete torrent from Real-Debrid** |
-| Free up space | Long-press a finished item → **Delete from this device** |
+| Delete a downloaded video | Long-press → **Delete from device and cloud**: it goes from both |
+| Delete a cloud folder or torrent | Long-press → **Delete from premiumize cloud** / **Delete torrent from Real-Debrid**: copies downloaded from it go too |
 
 Settings let you skip the question when selecting a video (always play now, always download, or
 always stream), and set what happens when a download finishes. They also cover connections,
@@ -89,6 +89,12 @@ downloads running at once, subtitles, and resume-on-start.
 premiumize sign-in uses the API key. Code pairing (enter a code at premiumize.me/device) is built in
 but needs an OAuth client ID registered at premiumize.me/registerclient. Paste that ID in **Settings →
 premiumize.me** and the *Pair with a code* button turns on.
+
+Deleting always covers both places, after one confirmation that says exactly what goes. On premiumize, a
+video's subtitles go with it, and its folder too once no other video is left in it (never the top level).
+Real-Debrid can only delete whole torrents, so deleting one downloaded episode removes its whole torrent
+from Real-Debrid; other episodes already on the device stay. Deleting files outside the add-on (with a
+file manager, or on the services' websites) is not synced: a missing file could just be an unplugged drive.
 
 Real-Debrid lists torrents newest first. A torrent with a single video plays straight from the list;
 others open as folders. Torrents Real-Debrid hasn't finished yet show their state. Real-Debrid can

@@ -2,6 +2,7 @@ NOTES = []
 NOTIFICATION_INFO, NOTIFICATION_WARNING, NOTIFICATION_ERROR = 'info', 'warning', 'error'
 _PROPS = {}
 YESNO, SELECT, INPUT = [], [], []     # queued answers for dialogs (tests)
+ASKED = []                          # (heading, text) of every yes/no dialog shown
 
 
 class Window(object):
@@ -29,6 +30,7 @@ class Dialog(object):
 
     def yesno(self, *a, **k):
         print('    [yes/no dialog]', a[:2])
+        ASKED.append(a[:2])
         return YESNO.pop(0) if YESNO else True
 
     def select(self, heading, options, *a, **k):

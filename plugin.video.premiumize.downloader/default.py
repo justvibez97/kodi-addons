@@ -190,16 +190,16 @@ def file_context(entry, fid, path, job):
     ctx.append(('Stream from cloud (no download)', run(action='choose', pick='stream', **params)))
     if job and job['status'] == 'downloading':
         ctx.append(('Download progress', run(action='progress', id=entry['id'])))
-    if done:
-        ctx.append(('Delete from this device', run(action='job', cmd='delete_local', id=entry['id'])))
     ctx.append(('Speed test with this file', run(action='speedtest', id=entry['id'], name=entry['name'])))
-    if realdebrid.is_rd(entry['id']):
+    # Deleting removes a file from the device and the cloud together.
+    if done:
+        ctx.append(('Delete from device and cloud', run(action='delete', id=entry['id'], name=entry['name'])))
+    elif realdebrid.is_rd(entry['id']):
         ctx.append(('Delete torrent from Real-Debrid', run(
             action='cloud_delete', kind='torrent', id=realdebrid.split_id(entry['id'])[0],
             name=entry.get('torrent') or entry['name'])))
     else:
-        ctx.append(('Delete from premiumize cloud', run(action='cloud_delete', kind='file', id=entry['id'],
-                                                       name=entry['name'], path=path)))
+        ctx.append(('Delete from premiumize cloud', run(action='delete', id=entry['id'], name=entry['name'])))
     ctx.append(('Go to Downloads', 'Container.Update(%s)' % url(action='downloads')))
     return ctx
 
@@ -865,7 +865,7 @@ def downloads():
             exists = os.path.exists(job['dest'])
             li = item(label if exists else '[COLOR grey]%s (file missing)[/COLOR]' % job['name'],
                       'DefaultVideo.png', right, job_plot(job))
-            ctx = [('Delete from this device', run(action='job', cmd='delete_local', id=jid, confirm=1)),
+            ctx = [('Delete from device and cloud', run(action='delete', id=jid, name=job['name'])),
                    ('Remove from list (keep file)', run(action='job', cmd='forget', id=jid)),
                    ('Clear finished from list', run(action='job', cmd='clear_finished'))]
             li.addContextMenuItems(ctx + common_ctx)
@@ -1211,46 +1211,218 @@ def action_drivetest():
         common.human_size(total), elapsed, avg / 1048576.0, pause, drive_verdict(avg, pause)))
 
 
-def action_cloud_delete():
-    """Delete a file or folder from the premiumize cloud (asks first; local copies are kept)."""
-    kind, item_id, name = ARGS.get('kind'), ARGS['id'], ARGS.get('name', '')
-    path = (ARGS.get('path') or '').strip('/')
-    jobs = client.jobs_by_id(wait=2)
-    if kind == 'torrent':
-        prefix = realdebrid.item_id(item_id, 0)[:-1]
-        active = [j for j in jobs.values() if j['status'] != 'done' and j['id'].startswith(prefix)]
-        what = 'the torrent "%s" and all its files' % short(name)
-    elif kind == 'folder':
-        prefix = path + '/' if path else None
-        active = [j for j in jobs.values() if j['status'] != 'done' and prefix
-                  and (j.get('cloud_path') or '').startswith(prefix)]
-        what = 'the folder "%s" and everything in it' % short(name)
+# ======================================================================= deleting (device and cloud together)
+
+def _plural(n, word):
+    return '%d %s%s' % (n, word, '' if n == 1 else 's')
+
+
+def _local_jobs(jobs, ids=None, prefix=None):
+    """Downloads of these cloud files: (finished and on the drive, unfinished, finished but file gone)."""
+    hit = [j for j in jobs.values()
+           if (ids is not None and j['id'] in ids) or (prefix and j['id'].startswith(prefix))]
+    done = [j for j in hit if j['status'] == 'done' and os.path.exists(j['dest'])]
+    unfinished = [j for j in hit if j['status'] != 'done']
+    gone = [j for j in hit if j['status'] == 'done' and not os.path.exists(j['dest'])]
+    return done, unfinished, gone
+
+
+def _remove_local(done, unfinished, gone=()):
+    for job in done:
+        client.cmd('delete_local', id=job['id'])     # the file, its subtitles and empty folders
+    for job in unfinished:
+        client.cmd('cancel', id=job['id'])           # stops it and deletes the partial file
+    for job in gone:
+        client.cmd('forget', id=job['id'])
+
+
+def _pm_cleanup_folder(prem, folder_id, removing):
+    """The premiumize folder to delete along with the files in ``removing``, or None.
+
+    Only when no video and no folder other than a subtitles folder would be
+    left in it, and never the top level of the cloud.
+    """
+    if not folder_id:
+        return None
+    listing = prem.folder_list(folder_id)
+    if not listing.get('parent_id'):
+        return None                         # the top level of the cloud
+    for e in listing.get('content') or []:
+        if e['id'] in removing:
+            continue
+        if e.get('type') == 'folder':
+            if e['name'].lower() not in SUBS_FOLDERS:
+                return None
+        elif common.is_video(e['name'], e.get('mime_type')):
+            return None
+    return listing
+
+
+def _pm_file_ids(prem, folder_id):
+    ids = set()
+    for e in prem.folder_list(folder_id).get('content') or []:
+        if e.get('type') == 'folder':
+            ids |= _pm_file_ids(prem, e['id'])
+        else:
+            ids.add(e['id'])
+    return ids
+
+
+def _cloud_gone(exc):
+    return getattr(exc, 'code', None) == 'not_found'
+
+
+def action_delete():
+    """Delete one file from this device and from the cloud together (asks first)."""
+    file_id, name = ARGS['id'], ARGS.get('name') or ARGS['id']
+    jobs = client.jobs_by_id(wait=3)
+    if realdebrid.is_rd(file_id):
+        return _delete_rd_file(file_id, name, jobs)
+    return _delete_pm_file(file_id, name, jobs)
+
+
+def _delete_pm_file(file_id, name, jobs):
+    title = 'Delete'
+    done, unfinished, gone = _local_jobs(jobs, ids={file_id})
+    prem = api()
+    in_cloud, folder, subs = True, None, set()
+    for job in done + unfinished:
+        subs.update(s['id'] for s in job.get('subs') or [])
+    try:
+        folder_id = prem.item_details(file_id).get('folder_id')
+    except ApiError as exc:
+        if not _cloud_gone(exc):
+            return DIALOG.ok(title, str(exc))
+        in_cloud, folder_id = False, None
+    if in_cloud and folder_id:
+        try:
+            entries, extra = folder_with_subs(prem, folder_id)
+            subs.update(s['id'] for s in subtitles_for(name, entries, extra))
+            folder = _pm_cleanup_folder(prem, folder_id, subs | {file_id})
+        except ApiError as exc:
+            common.log('could not check the folder of %s: %s' % (name, exc))
+    if done and in_cloud:
+        lines = ['Delete "%s" from this device and from your premiumize cloud?' % short(name)]
+    elif done:
+        lines = ['Delete "%s" from this device? It is no longer in your premiumize cloud.' % short(name)]
+    elif in_cloud:
+        lines = ['Delete "%s" from your premiumize cloud?' % short(name)]
     else:
-        active = [j for j in jobs.values() if j['id'] == item_id and j['status'] != 'done']
-        what = '"%s"' % short(name)
-    where = 'Real-Debrid' if kind == 'torrent' else 'your premiumize cloud'
-    title = 'Delete from Real-Debrid' if kind == 'torrent' else 'Delete from premiumize cloud'
-    lines = ['Permanently delete %s from %s?' % (what, where),
-             'Copies already downloaded to this device are kept.']
-    if active:
-        lines.append('[COLOR orange]%d unfinished download%s from it will be cancelled.[/COLOR]' % (
-            len(active), '' if len(active) == 1 else 's'))
+        _remove_local(done, unfinished, gone)
+        xbmc.executebuiltin('Container.Refresh')
+        return DIALOG.ok(title, '"%s" is no longer in your premiumize cloud.' % short(name))
+    if folder:
+        lines.append('Its folder "%s" goes too: no other video is left in it.' % short(folder.get('name') or ''))
+    elif in_cloud and subs:
+        lines.append('Its subtitles go too.')
+    if unfinished:
+        lines.append('[COLOR orange]Its unfinished download is cancelled.[/COLOR]')
     if not DIALOG.yesno(title, '[CR]'.join(lines), nolabel='Keep', yeslabel='Delete'):
         return
-    for job in active:
+    if in_cloud:
         try:
-            client.cmd('cancel', id=job['id'])
-        except client.ServiceDown:
-            pass
+            if folder:
+                prem.delete_folder(folder.get('folder_id') or folder_id)
+            else:
+                prem.delete_item(file_id)
+                for sub_id in subs:
+                    try:
+                        prem.delete_item(sub_id)
+                    except ApiError:
+                        pass
+        except ApiError as exc:
+            if not _cloud_gone(exc):
+                return DIALOG.ok(title, '%s[CR]Nothing was deleted from this device.' % exc)
+    _remove_local(done, unfinished, gone)
+    common.notify('Deleted: %s' % short(name))
+    xbmc.executebuiltin('Container.Refresh')
+
+
+def _delete_rd_file(file_id, name, jobs):
+    """A downloaded Real-Debrid file: Real-Debrid can only delete its whole torrent."""
+    title = 'Delete'
+    tid = realdebrid.split_id(file_id)[0]
+    prefix = realdebrid.item_id(tid, 0)[:-1]
+    done, _unf, gone = _local_jobs(jobs, ids={file_id})
+    all_done, unfinished, _gone = _local_jobs(jobs, prefix=prefix)
+    others = [j for j in all_done if j['id'] != file_id]
+    try:
+        info = sources.rd().torrent_info(tid)
+        in_cloud = True
+    except ApiError as exc:
+        if not _cloud_gone(exc):
+            return DIALOG.ok(title, str(exc))
+        info, in_cloud = {}, False
+    files = len(info.get('links') or [])
+    if done and in_cloud:
+        lines = ['Delete "%s" from this device and its torrent from Real-Debrid?' % short(name)]
+    elif done:
+        lines = ['Delete "%s" from this device? Its torrent is no longer on Real-Debrid.' % short(name)]
+    elif in_cloud:
+        lines = ['Delete the torrent "%s" from Real-Debrid?' % short(info.get('filename') or name)]
+    else:
+        _remove_local(done, [], gone)
+        xbmc.executebuiltin('Container.Refresh')
+        return DIALOG.ok(title, '"%s" is no longer on Real-Debrid.' % short(name))
+    if in_cloud and files > 1:
+        lines.append('Real-Debrid deletes whole torrents: all %d files of "%s" go from Real-Debrid.' % (
+            files, short(info.get('filename') or '')))
+    if others:
+        lines.append('%s from it already on this device %s.' % (
+            _plural(len(others), 'other file'), 'stays' if len(others) == 1 else 'stay'))
+    if unfinished:
+        lines.append('[COLOR orange]%s from it %s cancelled.[/COLOR]' % (
+            _plural(len(unfinished), 'unfinished download'), 'is' if len(unfinished) == 1 else 'are'))
+    if not DIALOG.yesno(title, '[CR]'.join(lines), nolabel='Keep', yeslabel='Delete'):
+        return
+    if in_cloud:
+        try:
+            sources.rd().delete_torrent(tid)
+        except ApiError as exc:
+            if not _cloud_gone(exc):
+                return DIALOG.ok(title, '%s[CR]Nothing was deleted from this device.' % exc)
+    _remove_local(done, unfinished, gone)
+    common.notify('Deleted: %s' % short(name))
+    xbmc.executebuiltin('Container.Refresh')
+
+
+def action_cloud_delete():
+    """Delete a premiumize folder or a Real-Debrid torrent, and the copies downloaded from it."""
+    kind, item_id, name = ARGS.get('kind'), ARGS['id'], ARGS.get('name', '')
+    if kind == 'file':                      # menus from older versions
+        return action_delete()
+    jobs = client.jobs_by_id(wait=3)
+    if kind == 'torrent':
+        done, unfinished, gone = _local_jobs(jobs, prefix=realdebrid.item_id(item_id, 0)[:-1])
+        what, where, title = 'the torrent "%s" and all its files' % short(name), 'Real-Debrid', 'Delete from Real-Debrid'
+    else:
+        try:
+            ids = _pm_file_ids(api(), item_id)
+        except ApiError as exc:
+            if not _cloud_gone(exc):
+                return DIALOG.ok('Delete from premiumize cloud', str(exc))
+            ids = set()
+        done, unfinished, gone = _local_jobs(jobs, ids=ids)
+        what, where, title = ('the folder "%s" and everything in it' % short(name), 'your premiumize cloud',
+                              'Delete from premiumize cloud')
+    lines = ['Permanently delete %s from %s?' % (what, where)]
+    if done:
+        lines.append('%s downloaded from it to this device %s deleted too.' % (
+            _plural(len(done), 'file'), 'is' if len(done) == 1 else 'are'))
+    if unfinished:
+        lines.append('[COLOR orange]%s from it %s cancelled.[/COLOR]' % (
+            _plural(len(unfinished), 'unfinished download'), 'is' if len(unfinished) == 1 else 'are'))
+    if not DIALOG.yesno(title, '[CR]'.join(lines), nolabel='Keep', yeslabel='Delete'):
+        return
     try:
         if kind == 'torrent':
             sources.rd().delete_torrent(item_id)
-        elif kind == 'folder':
-            api().delete_folder(item_id)
         else:
-            api().delete_item(item_id)
+            api().delete_folder(item_id)
     except ApiError as exc:
-        return DIALOG.ok(title, str(exc))
+        if not _cloud_gone(exc):
+            return DIALOG.ok(title, '%s[CR]Nothing was deleted from this device.' % exc)
+    _remove_local(done, unfinished, gone)
     common.notify('Deleted from %s: %s' % ('Real-Debrid' if kind == 'torrent' else 'your cloud', short(name)))
     xbmc.executebuiltin('Container.Refresh')
 
@@ -1384,6 +1556,8 @@ def main():
             action_unpair()
         elif action == 'cloud_delete':
             action_cloud_delete()
+        elif action == 'delete':
+            action_delete()
         elif action == 'speedtest':
             action_speedtest()
         elif action == 'drivetest':
