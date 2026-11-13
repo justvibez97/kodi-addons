@@ -13,8 +13,8 @@ import xbmcvfs
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resources', 'lib'))
 
-from pmdl import client, common, engine, storage  # noqa: E402
-from pmdl.api import ApiError, Premiumize, device_code, poll_device_token  # noqa: E402
+from pmdl import client, common, engine, realdebrid, sources, storage  # noqa: E402
+from pmdl.api import ApiError, device_code, poll_device_token  # noqa: E402
 
 HANDLE = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].lstrip('-').isdigit() else -1
 ARGS = dict(urllib.parse.parse_qsl(sys.argv[2][1:])) if len(sys.argv) > 2 and sys.argv[2] else {}
@@ -38,7 +38,7 @@ def play_cmd(**kw):
 
 
 def api():
-    return Premiumize(common.api_token())
+    return sources.pm()
 
 
 def set_info(li, title, plot=''):
@@ -69,18 +69,14 @@ def end(content='files', cache=False):
 
 
 def fail_listing(message):
-    DIALOG.notification('Premiumize Downloader', message, xbmcgui.NOTIFICATION_ERROR, 6000)
+    DIALOG.notification(common.NAME, message, xbmcgui.NOTIFICATION_ERROR, 6000)
     xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
 
 
 # ======================================================================= root
 
 def root():
-    if not common.api_token():
-        li = item('[B]Set up:[/B] add your premiumize.me API key', 'DefaultAddonService.png',
-                  plot='Open premiumize.me/account on your phone, copy the API key, then paste it '
-                       'into this add-on\'s settings.')
-        add(li, url(action='settings'), folder=False)
+    pm_ok, rd_ok = sources.pm_configured(), sources.rd_configured()
     jobs = client.jobs_by_id(wait=2)
     active = [j for j in jobs.values() if j['status'] == 'downloading']
     summary = ''
@@ -91,10 +87,22 @@ def root():
         waiting = len([j for j in jobs.values() if j['status'] in ('queued', 'paused', 'failed')])
         if waiting:
             summary = '%d waiting' % waiting
-    add(item('My cloud', 'DefaultNetwork.png'), url(action='cloud'))
+    if pm_ok:
+        add(item('premiumize.me cloud', 'DefaultNetwork.png'), url(action='cloud'))
+    if rd_ok:
+        add(item('Real-Debrid torrents', 'DefaultNetwork.png'), url(action='rd'))
     add(item('Downloads', 'DefaultHardDisk.png', summary), url(action='downloads'))
-    add(item('Search my cloud', 'DefaultAddonsSearch.png'), url(action='search'))
+    if pm_ok or rd_ok:
+        add(item('Search my cloud', 'DefaultAddonsSearch.png'), url(action='search'))
     storage_item(jobs)
+    if not pm_ok:
+        add(item('Add premiumize.me', 'DefaultAddonService.png',
+                 plot='Open premiumize.me/account on your phone, copy the API key, then paste it into '
+                      'this add-on\'s settings (premiumize.me > API key).'), url(action='settings'), folder=False)
+    if not rd_ok:
+        add(item('Add Real-Debrid', 'DefaultAddonService.png',
+                 plot='Sign in with a short code that you enter at real-debrid.com/device on your phone.'),
+            url(action='rd_pair'), folder=False)
     add(item('Settings', 'DefaultAddonProgram.png'), url(action='settings'), folder=False)
     end()
 
@@ -185,8 +193,13 @@ def file_context(entry, fid, path, job):
     if done:
         ctx.append(('Delete from this device', run(action='job', cmd='delete_local', id=entry['id'])))
     ctx.append(('Speed test with this file', run(action='speedtest', id=entry['id'], name=entry['name'])))
-    ctx.append(('Delete from premiumize cloud', run(action='cloud_delete', kind='file', id=entry['id'],
-                                                   name=entry['name'], path=path)))
+    if realdebrid.is_rd(entry['id']):
+        ctx.append(('Delete torrent from Real-Debrid', run(
+            action='cloud_delete', kind='torrent', id=realdebrid.split_id(entry['id'])[0],
+            name=entry.get('torrent') or entry['name'])))
+    else:
+        ctx.append(('Delete from premiumize cloud', run(action='cloud_delete', kind='file', id=entry['id'],
+                                                       name=entry['name'], path=path)))
     ctx.append(('Go to Downloads', 'Container.Update(%s)' % url(action='downloads')))
     return ctx
 
@@ -208,28 +221,33 @@ def list_entries(entries, fid, path, jobs, show_folders=True):
                                                      name=e['name'], path=sub_path))])
             add(li, url(action='cloud', id=e['id'], path=sub_path))
     for e in files:
-        video = common.is_video(e['name'], e.get('mime_type'))
-        if not video and (not show_all or common.is_sub(e['name'])):
-            continue
-        job = live_job(jobs.get(e['id']))
-        size = e.get('size') or 0
-        label = e['name'] + job_tag(job)
-        li = item(label, 'DefaultVideo.png' if video else 'DefaultFile.png', common.human_size(size))
-        # Some skins show the title rather than the label in video lists, so the tag goes in both.
-        set_info(li, label, '%s[CR]%s' % (common.human_gb(size), e.get('path') or path or 'My cloud'))
-        params = dict(id=e['id'], fid=fid or e.get('folder_id'), path=path, name=e['name'], size=size)
-        if video:
-            li.addContextMenuItems(file_context(e, params['fid'], path, job))
-            if ask and not job:
-                # Ask before playback starts. A dialog opened while Kodi is already
-                # starting playback can end up invisible (seen with Umbrestuary).
-                add(li, url(action='choose', **params), folder=False)
-            else:
-                li.setProperty('IsPlayable', 'true')
-                add(li, url(action='play', **params), folder=False)
+        add_file(e, fid, path, jobs, ask, show_all)
+
+
+def add_file(e, fid, path, jobs, ask, show_all, tag=''):
+    """One cloud file (premiumize or Real-Debrid) as a list item."""
+    video = common.is_video(e['name'], e.get('mime_type'))
+    if not video and (not show_all or common.is_sub(e['name'])):
+        return
+    job = live_job(jobs.get(e['id']))
+    size = e.get('size') or 0
+    label = e['name'] + job_tag(job) + tag
+    li = item(label, 'DefaultVideo.png' if video else 'DefaultFile.png', common.human_size(size))
+    # Some skins show the title rather than the label in video lists, so the tag goes in both.
+    set_info(li, label, '%s[CR]%s' % (common.human_gb(size), e.get('path') or path or 'My cloud'))
+    params = dict(id=e['id'], fid=fid or e.get('folder_id'), path=path, name=e['name'], size=size)
+    if video:
+        li.addContextMenuItems(file_context(e, params['fid'], path, job))
+        if ask and not job:
+            # Ask before playback starts. A dialog opened while Kodi is already
+            # starting playback can end up invisible (seen with Umbrestuary).
+            add(li, url(action='choose', **params), folder=False)
         else:
-            li.addContextMenuItems([('Download', run(action='download', **params))])
-            add(li, url(action='download', **params), folder=False)
+            li.setProperty('IsPlayable', 'true')
+            add(li, url(action='play', **params), folder=False)
+    else:
+        li.addContextMenuItems([('Download', run(action='download', **params))])
+        add(li, url(action='download', **params), folder=False)
 
 
 def cloud():
@@ -243,6 +261,124 @@ def cloud():
     xbmcplugin.addSortMethod(HANDLE, xbmcplugin.SORT_METHOD_UNSORTED)
     xbmcplugin.addSortMethod(HANDLE, xbmcplugin.SORT_METHOD_LABEL_IGNORE_FOLDERS)
     end('videos')
+
+
+# ======================================================================= Real-Debrid
+
+def rd_status_text(t):
+    status = t.get('status') or '?'
+    text = realdebrid.STATUS_TEXT.get(status, status)
+    if status in ('downloading', 'uploading', 'compressing') and t.get('progress') is not None:
+        text += ' %d%%' % t['progress']
+    return text
+
+
+def add_torrents(torrents, jobs, tag=''):
+    """Torrents as list items: a single video plays directly, the rest open as folders."""
+    ask = common.setting_int('click_action', 0) == 0
+    show_all = common.setting_bool('show_all_files')
+    for t in torrents:
+        tid = t['id']
+        name = t.get('filename') or tid
+        links = t.get('links') or []
+        delete = ('Delete torrent from Real-Debrid', run(action='cloud_delete', kind='torrent', id=tid, name=name))
+        if t.get('status') != 'downloaded':
+            text = rd_status_text(t)
+            li = item('%s  [COLOR grey](%s)[/COLOR]%s' % (name, text, tag), 'DefaultFolder.png', '',
+                      'Not ready on Real-Debrid yet: %s.' % text)
+            li.addContextMenuItems([delete])
+            add(li, url(action='rd_status', name=name, status=text), folder=False)
+            continue
+        if len(links) == 1 and common.is_video(name):
+            entry = {'id': realdebrid.item_id(tid, 0), 'name': name, 'size': t.get('bytes') or 0,
+                     'type': 'file', 'torrent': name, 'path': 'Real-Debrid'}
+            add_file(entry, tid, '', jobs, ask, show_all, tag)
+            continue
+        li = item(name + tag, 'DefaultFolder.png', common.human_gb(t.get('bytes') or 0),
+                  '%s[CR]%d files' % (common.human_gb(t.get('bytes') or 0), len(links)))
+        li.addContextMenuItems([('Download whole torrent', run(action='rd_download_all', id=tid)), delete])
+        add(li, url(action='rd_torrent', id=tid))
+
+
+def rd_list():
+    try:
+        torrents = sources.rd().torrents()
+    except ApiError as exc:
+        return fail_listing(str(exc))
+    if not torrents:
+        add(item('No torrents in your Real-Debrid account yet.', 'DefaultIconInfo.png'), url(action='rd'))
+    add_torrents(torrents, client.jobs_by_id())
+    end('videos')
+
+
+def rd_entries(rdc, info):
+    """Files of one torrent, ready for add_file() and build_item()."""
+    name = info.get('filename') or info['id']
+    entries = rdc.files(info)
+    for e in entries:
+        e['torrent'] = name
+        e['path'] = '/'.join(p for p in (name, e.get('dir')) if p)
+    return entries
+
+
+def rd_rel(info, entry, entries):
+    """Folders to save a Real-Debrid file under: the torrent's name, then its own sub-folders."""
+    name = info.get('filename') or ''
+    if len(entries) == 1 and not entry.get('dir') and entry['name'] == name:
+        return []                       # a single-file torrent: no folder of its own
+    parts = [p for p in (entry.get('dir') or '').split('/') if p]
+    if parts and parts[0] == name:
+        parts = parts[1:]
+    return [name] + parts
+
+
+def rd_build(info, entry, entries):
+    return build_item(entry, rd_rel(info, entry, entries), entries)
+
+
+def rd_torrent():
+    tid = ARGS['id']
+    try:
+        rdc = sources.rd()
+        info = rdc.torrent_info(tid)
+        entries = rd_entries(rdc, info)
+    except ApiError as exc:
+        return fail_listing(str(exc))
+    jobs = client.jobs_by_id()
+    ask = common.setting_int('click_action', 0) == 0
+    show_all = common.setting_bool('show_all_files')
+    for e in sorted(entries, key=lambda e: (e.get('dir') or '', e['name'].lower())):
+        add_file(e, tid, info.get('filename') or '', jobs, ask, show_all)
+    xbmcplugin.addSortMethod(HANDLE, xbmcplugin.SORT_METHOD_UNSORTED)
+    xbmcplugin.addSortMethod(HANDLE, xbmcplugin.SORT_METHOD_LABEL)
+    end('videos')
+
+
+def rd_single_item():
+    tid, _n = realdebrid.split_id(ARGS['id'])
+    rdc = sources.rd()
+    info = rdc.torrent_info(tid)
+    entries = rd_entries(rdc, info)
+    found = [e for e in entries if e['id'] == ARGS['id']]
+    if not found:
+        raise ApiError('That file is no longer on Real-Debrid.', 'not_found', exact=True)
+    return rd_build(info, found[0], entries)
+
+
+def action_rd_download_all():
+    try:
+        rdc = sources.rd()
+        info = rdc.torrent_info(ARGS['id'])
+        entries = rd_entries(rdc, info)
+    except ApiError as exc:
+        return DIALOG.ok('Real-Debrid', str(exc))
+    found = [rd_build(info, e, entries) for e in entries if common.is_video(e['name'], e.get('mime_type'))]
+    confirm_and_enqueue(found, 'Download whole torrent')
+
+
+def action_rd_status():
+    DIALOG.ok(ARGS.get('name', 'Real-Debrid'), 'This torrent isn\'t ready on Real-Debrid yet (%s). '
+              'Once Real-Debrid has it, its files can be played and downloaded here.' % ARGS.get('status', '?'))
 
 
 def _history_path():
@@ -259,11 +395,24 @@ def search():
             li.addContextMenuItems([('Remove from recent searches', run(action='search_forget', q=q))])
             add(li, url(action='search', q=q))
         return end()
-    try:
-        data = api().folder_search(query)
-    except ApiError as exc:
-        return fail_listing(str(exc))
-    entries = data.get('content') or []
+    pm_ok, rd_ok = sources.pm_configured(), sources.rd_configured()
+    entries, torrents, errors = [], [], []
+    if pm_ok:
+        try:
+            entries = api().folder_search(query).get('content') or []
+        except ApiError as exc:
+            errors.append(str(exc))
+    if rd_ok:
+        try:
+            words = query.lower().split()
+            torrents = [t for t in sources.rd().torrents()
+                        if all(w in torrent_words(t.get('filename') or '') for w in words)]
+        except ApiError as exc:
+            errors.append(str(exc))
+    if errors and not (entries or torrents):
+        return fail_listing(errors[0])
+    if errors:
+        common.notify(errors[0])
     for e in [e for e in entries if e.get('type') == 'folder']:
         li = item(e['name'], 'DefaultFolder.png')
         li.addContextMenuItems([
@@ -271,10 +420,20 @@ def search():
             ('Delete from premiumize cloud', run(action='cloud_delete', kind='folder', id=e['id'],
                                                  name=e['name'], path=e['name']))])
         add(li, url(action='cloud', id=e['id'], path=e['name']))
-    list_entries(entries, None, '', client.jobs_by_id(), show_folders=False)
-    if not entries:
+    jobs = client.jobs_by_id()
+    list_entries(entries, None, '', jobs, show_folders=False)
+    add_torrents(torrents, jobs, '  [COLOR grey](Real-Debrid)[/COLOR]' if pm_ok else '')
+    if not entries and not torrents:
         add(item('Nothing found for "%s"' % query, 'DefaultIconInfo.png'), url(action='search'))
     end('videos')
+
+
+def torrent_words(name):
+    """Release names separate words with dots: 'The.Movie.2020' matches 'the movie'."""
+    out = name.lower()
+    for ch in '._-[]()':
+        out = out.replace(ch, ' ')
+    return out
 
 
 def action_search_new():
@@ -310,7 +469,8 @@ def subtitles_for(video_name, entries, extra_entries=()):
             target = '%s.%s%s' % (base, sub_base, common.ext(e['name']))
         else:
             continue
-        out.append({'id': e['id'], 'name': e['name'], 'target': target, 'link': e.get('link')})
+        out.append({'id': e['id'], 'name': e['name'], 'target': target, 'link': e.get('link'),
+                    'src_link': e.get('src_link')})
     return out
 
 
@@ -330,11 +490,18 @@ def folder_with_subs(prem, fid):
 def build_item(entry, rel_parts, entries, extra=()):
     return {'id': entry['id'], 'name': entry['name'], 'size': int(entry.get('size') or 0),
             'rel': list(rel_parts), 'subs': subtitles_for(entry['name'], entries, extra),
-            'cloud_path': '/'.join(list(rel_parts) + [entry['name']])}
+            'cloud_path': '/'.join(list(rel_parts) + [entry['name']]), 'src_link': entry.get('src_link')}
+
+
+def item_for_args():
+    """Queue item for the cloud file in ARGS, from whichever service it lives on."""
+    if realdebrid.is_rd(ARGS['id']):
+        return rd_single_item()
+    return single_item(api())
 
 
 def single_item(prem):
-    """Build a queue item for the file in ARGS (looks up its folder for subtitles)."""
+    """Build a queue item for the premiumize file in ARGS (looks up its folder for subtitles)."""
     fid = ARGS.get('fid')
     path = ARGS.get('path', '')
     entry = {'id': ARGS['id'], 'name': ARGS.get('name'), 'size': int(ARGS.get('size') or 0)}
@@ -358,6 +525,12 @@ NO_USB = ("Kodi can't see a USB drive.[CR]If the Shield's Storage settings list 
           'Kodi also needs "Allow management of all files" (Settings > Apps > Kodi > Permissions > Files and media).')
 
 
+def sub_folder(base):
+    """The add-on's folder on a drive (keeps the one older versions made, if it's there)."""
+    older = os.path.join(base, 'Premiumize')
+    return older if os.path.isdir(older) else os.path.join(base, 'Debrid Downloader')
+
+
 def choose_root(reason=''):
     """Ask where downloads go; saves and returns the folder (or None)."""
     if reason:
@@ -369,7 +542,7 @@ def choose_root(reason=''):
             DIALOG.ok('Download folder', NO_USB)
         for label, vol in vols:
             options.append('%s  ·  %s' % (label, storage.describe(vol)))
-            paths.append(os.path.join(vol, 'Premiumize'))
+            paths.append(sub_folder(vol))
     options += ['Enter a folder path...', 'Browse for a folder...']
     paths += ['<enter>', None]
     choice = DIALOG.select('Where should downloads go?', options)
@@ -377,7 +550,7 @@ def choose_root(reason=''):
         return None
     folder = paths[choice]
     if folder == '<enter>':
-        folder = DIALOG.input('Folder path (e.g. /storage/1A2B-3C4D/Premiumize)',
+        folder = DIALOG.input('Folder path (e.g. /storage/1A2B-3C4D/Downloads)',
                               common.setting('download_path') or '/storage/').strip()
         if not folder:
             return None
@@ -394,7 +567,7 @@ def choose_root(reason=''):
     problem = storage.check_writable(folder)
     if problem and folder.startswith('/storage/') and not folder.startswith('/storage/emulated'):
         vol = '/'.join(folder.split('/')[:3])
-        fallback = vol + '/Android/data/org.xbmc.kodi/files/Premiumize'
+        fallback = sub_folder(vol + '/Android/data/org.xbmc.kodi/files')
         if storage.check_writable(fallback) is None and DIALOG.yesno(
                 'Download folder', problem + '[CR][CR]Or use a folder Kodi can always write to on this '
                 'drive? (Android deletes it if you uninstall Kodi.)', nolabel='Cancel', yeslabel='Use it'):
@@ -439,7 +612,7 @@ def enqueue(items, start_id=None, quiet=False):
     try:
         result = client.cmd('enqueue', items=items, root=folder, start_id=start_id)
     except client.ServiceDown as exc:
-        DIALOG.ok('Premiumize Downloader', str(exc))
+        DIALOG.ok(common.NAME, str(exc))
         return None
     if not quiet:
         added, skipped = len(result['added']), len(result['skipped'])
@@ -454,10 +627,9 @@ def enqueue(items, start_id=None, quiet=False):
 
 def action_download():
     try:
-        prem = api()
-        it = single_item(prem)
+        it = item_for_args()
     except ApiError as exc:
-        return DIALOG.ok('Premiumize Downloader', str(exc))
+        return DIALOG.ok(common.NAME, str(exc))
     enqueue([it])
 
 
@@ -484,18 +656,22 @@ def action_download_folder():
         walk(ARGS['id'], [p for p in root_path.split('/') if p])
     except ApiError as exc:
         progress.close()
-        return DIALOG.ok('Premiumize Downloader', str(exc))
+        return DIALOG.ok(common.NAME, str(exc))
     canceled = progress.iscanceled()
     progress.close()
     if canceled:
         return
+    confirm_and_enqueue(found, 'Download folder')
+
+
+def confirm_and_enqueue(found, title):
     if not found:
-        return DIALOG.ok('Download folder', 'No videos in this folder.')
+        return DIALOG.ok(title, 'No videos in this folder.')
     total = sum(i['size'] for i in found)
     folder = ensure_root()
     if not folder:
         return
-    if not DIALOG.yesno('Download folder', 'Download %d videos (%s)?[CR]To %s (%s)' % (
+    if not DIALOG.yesno(title, 'Download %d videos (%s)?[CR]To %s (%s)' % (
             len(found), common.human_gb(total), folder, storage.describe(folder))):
         return
     enqueue(found)
@@ -550,13 +726,12 @@ def action_play():
             mode = {1: 'now', 2: 'download', 3: 'stream'}[choice]
 
     try:
-        prem = api()
         if mode == 'stream':
-            link = prem.link(file_id)
+            link = sources.resolve(file_id)[0]
             return resolve(link, name, common.mime_for(name), folder=folder_of())
-        it = single_item(prem)
+        it = item_for_args()
     except ApiError as exc:
-        DIALOG.ok('Premiumize Downloader', str(exc))
+        DIALOG.ok(common.NAME, str(exc))
         return cancel_resolve()
 
     if mode == 'download':
@@ -591,9 +766,9 @@ def action_choose():
     if pick == 'stream':
         return xbmc.executebuiltin('PlayMedia(%s)' % url(action='play', mode='stream', **params))
     try:
-        it = single_item(api())
+        it = item_for_args()
     except ApiError as exc:
-        return DIALOG.ok('Premiumize Downloader', str(exc))
+        return DIALOG.ok(common.NAME, str(exc))
     # Drive picker and space checks happen here, before playback starts.
     if enqueue([it], start_id=it['id'], quiet=True) is None:
         return
@@ -609,7 +784,7 @@ def action_playjob():
         if os.path.exists(job['dest']):
             return resolve(job['dest'], job['name'], folder=folder_of(job))
         # Never start a whole new download behind the viewer's back.
-        DIALOG.ok(short(job['name']), 'This file has been deleted from the drive. Pick it in My cloud '
+        DIALOG.ok(short(job['name']), 'This file has been deleted from the drive. Pick it in your cloud '
                                       'to download or stream it again.')
         return cancel_resolve()
     client.cmd('start_now', id=job['id'])
@@ -680,8 +855,8 @@ def downloads():
     if any(j['status'] in ('paused', 'failed') for j in jobs):
         common_ctx.append(('Resume all', run(action='job', cmd='resume_all')))
     if not jobs:
-        add(item('Nothing here yet. Pick a video in My cloud to download it.', 'DefaultIconInfo.png'),
-            url(action='cloud'))
+        add(item('Nothing here yet. Pick a video in your cloud to download it.', 'DefaultIconInfo.png'),
+            common.PLUGIN)
     for job in jobs:
         label, right = job_label(job)
         st = job['status']
@@ -755,7 +930,7 @@ def action_job():
         job = client.jobs_by_id(wait=3).get(job_id) or {}
         question = ('Stop this download and delete the partial file?' if cmd == 'cancel'
                     else 'Delete this file from the device?')
-        if not DIALOG.yesno(job.get('name', 'Premiumize Downloader'), question):
+        if not DIALOG.yesno(job.get('name', common.NAME), question):
             return
     try:
         if job_id:
@@ -763,7 +938,7 @@ def action_job():
         else:
             client.cmd(cmd)
     except client.ServiceDown as exc:
-        return DIALOG.ok('Premiumize Downloader', str(exc))
+        return DIALOG.ok(common.NAME, str(exc))
     xbmc.executebuiltin('Container.Refresh')
 
 
@@ -884,6 +1059,81 @@ def action_unpair():
     common.notify('Pairing removed')
 
 
+def action_rd_pair():
+    """Sign in to Real-Debrid with a code entered at real-debrid.com/device."""
+    title = 'Sign in to Real-Debrid'
+    try:
+        code = realdebrid.device_code()
+    except ApiError as exc:
+        return DIALOG.ok(title, str(exc))
+    site = (code.get('verification_url') or 'https://real-debrid.com/device').split('://')[-1]
+    text = 'On your phone or computer, open[CR][B]%s[/B][CR]and enter the code  [B]%s[/B]' % (site, code['user_code'])
+    total = max(60, int(code.get('expires_in') or 900))
+    interval = max(2, int(code.get('interval') or 5))
+    deadline = time.time() + total
+    dlg = xbmcgui.DialogProgress()
+    dlg.create(title, text)
+    creds = token = None
+    try:
+        while time.time() < deadline and not dlg.iscanceled():
+            dlg.update(int((total - (deadline - time.time())) * 100 / total), text)
+            for _tick in range(interval * 4):           # wait, but react to Cancel quickly
+                if dlg.iscanceled():
+                    break
+                xbmc.sleep(250)
+            if dlg.iscanceled():
+                break
+            creds = realdebrid.poll_credentials(code['device_code'])
+            if creds:
+                token = realdebrid.device_token(creds['client_id'], creds['client_secret'], code['device_code'])
+                break
+        canceled = dlg.iscanceled()
+    except ApiError as exc:
+        dlg.close()
+        return DIALOG.ok(title, str(exc))
+    finally:
+        dlg.close()
+    if not token:
+        if not canceled:
+            DIALOG.ok(title, 'The code expired before it was entered. Try again.')
+        return
+    store = sources.SettingsStore()
+    store.set('rd_client_id', creds['client_id'])
+    store.set('rd_client_secret', creds['client_secret'])
+    realdebrid.save_token(store, token)
+    try:
+        who = sources.rd().user().get('username') or 'your account'
+    except ApiError:
+        who = 'your account'
+    common.notify('Signed in to Real-Debrid as %s' % who)
+    xbmc.executebuiltin('Container.Refresh')
+
+
+def action_rd_unpair():
+    if not DIALOG.yesno('Real-Debrid', 'Sign out of Real-Debrid on this device?[CR]Downloads already on this '
+                        'device stay. Unfinished Real-Debrid downloads can be resumed after you sign in again.',
+                        nolabel='Cancel', yeslabel='Sign out'):
+        return
+    for key in sources.RD_KEYS:
+        common.set_setting(key, '')
+    common.notify('Signed out of Real-Debrid')
+    xbmc.executebuiltin('Container.Refresh')
+
+
+def action_rd_account():
+    try:
+        info = sources.rd().user()
+    except ApiError as exc:
+        return DIALOG.ok('Real-Debrid account', str(exc))
+    lines = ['Signed in as %s' % (info.get('username') or '?')]
+    left = int(info.get('premium') or 0)
+    if info.get('type') == 'premium' and left > 0:
+        lines.append('Premium until %s (%d days left)' % ((info.get('expiration') or '')[:10], left // 86400))
+    else:
+        lines.append('[COLOR orange]Not premium: Real-Debrid only serves downloads to premium accounts.[/COLOR]')
+    DIALOG.ok('Real-Debrid account', '[CR]'.join(lines))
+
+
 def speedtest_advice(results, current):
     """Pick a connection count from [(connections, bytes/s)] and explain it."""
     top = max(sp for _n, sp in results)
@@ -966,7 +1216,11 @@ def action_cloud_delete():
     kind, item_id, name = ARGS.get('kind'), ARGS['id'], ARGS.get('name', '')
     path = (ARGS.get('path') or '').strip('/')
     jobs = client.jobs_by_id(wait=2)
-    if kind == 'folder':
+    if kind == 'torrent':
+        prefix = realdebrid.item_id(item_id, 0)[:-1]
+        active = [j for j in jobs.values() if j['status'] != 'done' and j['id'].startswith(prefix)]
+        what = 'the torrent "%s" and all its files' % short(name)
+    elif kind == 'folder':
         prefix = path + '/' if path else None
         active = [j for j in jobs.values() if j['status'] != 'done' and prefix
                   and (j.get('cloud_path') or '').startswith(prefix)]
@@ -974,12 +1228,14 @@ def action_cloud_delete():
     else:
         active = [j for j in jobs.values() if j['id'] == item_id and j['status'] != 'done']
         what = '"%s"' % short(name)
-    lines = ['Permanently delete %s from your premiumize cloud?' % what,
+    where = 'Real-Debrid' if kind == 'torrent' else 'your premiumize cloud'
+    title = 'Delete from Real-Debrid' if kind == 'torrent' else 'Delete from premiumize cloud'
+    lines = ['Permanently delete %s from %s?' % (what, where),
              'Copies already downloaded to this device are kept.']
     if active:
         lines.append('[COLOR orange]%d unfinished download%s from it will be cancelled.[/COLOR]' % (
             len(active), '' if len(active) == 1 else 's'))
-    if not DIALOG.yesno('Delete from premiumize cloud', '[CR]'.join(lines), nolabel='Keep', yeslabel='Delete'):
+    if not DIALOG.yesno(title, '[CR]'.join(lines), nolabel='Keep', yeslabel='Delete'):
         return
     for job in active:
         try:
@@ -987,13 +1243,15 @@ def action_cloud_delete():
         except client.ServiceDown:
             pass
     try:
-        if kind == 'folder':
+        if kind == 'torrent':
+            sources.rd().delete_torrent(item_id)
+        elif kind == 'folder':
             api().delete_folder(item_id)
         else:
             api().delete_item(item_id)
     except ApiError as exc:
-        return DIALOG.ok('Delete from premiumize cloud', str(exc))
-    common.notify('Deleted from your cloud: %s' % short(name))
+        return DIALOG.ok(title, str(exc))
+    common.notify('Deleted from %s: %s' % ('Real-Debrid' if kind == 'torrent' else 'your cloud', short(name)))
     xbmc.executebuiltin('Container.Refresh')
 
 
@@ -1001,7 +1259,7 @@ def action_speedtest():
     """Measure this file's download speed with different connection counts (nothing is saved)."""
     file_id = ARGS['id']
     try:
-        link = api().link(file_id)
+        link = sources.resolve(file_id)[0]
     except ApiError as exc:
         return DIALOG.ok('Speed test', str(exc))
     counts = [1, 4, 8, 12, 16]
@@ -1071,6 +1329,20 @@ def main():
             root()
         elif action == 'cloud':
             cloud()
+        elif action == 'rd':
+            rd_list()
+        elif action == 'rd_torrent':
+            rd_torrent()
+        elif action == 'rd_download_all':
+            action_rd_download_all()
+        elif action == 'rd_status':
+            action_rd_status()
+        elif action == 'rd_pair':
+            action_rd_pair()
+        elif action == 'rd_unpair':
+            action_rd_unpair()
+        elif action == 'rd_account':
+            action_rd_account()
         elif action == 'search':
             search()
         elif action == 'search_new':
@@ -1114,11 +1386,11 @@ def main():
         elif action == 'drivetest':
             action_drivetest()
     except client.ServiceDown as exc:
-        DIALOG.ok('Premiumize Downloader', str(exc))
+        DIALOG.ok(common.NAME, str(exc))
         if action in ('play', 'playjob'):
             cancel_resolve()
     except ApiError as exc:
-        DIALOG.ok('Premiumize Downloader', str(exc))
+        DIALOG.ok(common.NAME, str(exc))
         if action in ('play', 'playjob'):
             cancel_resolve()
 

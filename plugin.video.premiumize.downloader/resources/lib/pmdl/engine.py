@@ -31,7 +31,7 @@ import urllib.parse
 
 MB = 1024 * 1024
 BLOCK = 256 * 1024            # network read size
-USER_AGENT = 'Kodi-PremiumizeDownloader/1.0'
+USER_AGENT = 'Kodi-DebridDownloader/1.1'
 RESUME_SAFETY = 1 * MB        # re-fetch the tail of a partial file on resume
 DRAIN_LIMIT = 512 * 1024      # read and discard up to this much to keep a connection alive
 
@@ -320,8 +320,9 @@ class Downloader(object):
 
     def __init__(self, url_provider, sink, size=None, connections=8,
                  max_buffer=192 * MB, stall_timeout=180, log=None, write_stall_timeout=90,
-                 max_rate=0):
+                 max_rate=0, service='premiumize'):
         self.url_provider = url_provider
+        self.service = service      # who serves the file, for status notes
         self.sink = sink
         self.size = size
         self.connections = max(1, int(connections))
@@ -601,7 +602,7 @@ class Downloader(object):
         device) get full speed from the same file at the same time. So when
         the speed stays under half of this download's best for 45 s, and it
         isn't the drive, a speed limit or an error we already know about,
-        fetch a new link (premiumize may hand out another server) and let
+        fetch a new link (the service may hand out another server) and let
         every connection reconnect.
         """
         if self.started_at and now - self.started_at > 20:
@@ -779,10 +780,10 @@ class Downloader(object):
             with self.cond:
                 if self.connections - self.retired - 1 >= 1:
                     self.retired += 1
-                    self._set_note('premiumize limited connections (%s): using %d' % (
-                        exc, self.connections - self.retired))
+                    self._set_note('%s limited connections (%s): using %d' % (
+                        self.service, exc, self.connections - self.retired))
                     return None
-            self._set_note('premiumize is busy (%s), retrying' % exc)
+            self._set_note('%s is busy (%s), retrying' % (self.service, exc))
             return _backoff_delay(failures)
         if isinstance(exc, LinkExpired):
             with self.cond:
@@ -792,8 +793,8 @@ class Downloader(object):
                     # The link works for the other connections, so this is a
                     # per-user connection limit rather than an expired link.
                     self.retired += 1
-                    self._set_note('premiumize limited connections (%s): using %d' % (
-                        exc, self.connections - self.retired))
+                    self._set_note('%s limited connections (%s): using %d' % (
+                        self.service, exc, self.connections - self.retired))
                     return None
             self._set_note('Refreshing the download link (%s)' % exc)
             if failures > 6:

@@ -6,8 +6,8 @@ import time
 import traceback
 import urllib.request
 
-from . import common, engine, storage
-from .api import ApiError, Premiumize
+from . import common, engine, sources, storage
+from .api import ApiError
 
 ORDER = {'downloading': 0, 'queued': 1, 'paused': 2, 'failed': 3, 'done': 4}
 SPACE_MARGIN = 200 * 1024 * 1024
@@ -97,6 +97,7 @@ class Manager(object):
         self.runners = {}
         self.events = []            # (kind, job dict) for the service to announce
         self._links = {}
+        self._chunks = {}           # job id -> most connections the service allows (0: no limit given)
         self._dirty = False
         self._saved_at = 0
         resume = common.setting_bool('resume_on_start')
@@ -170,8 +171,11 @@ class Manager(object):
         cached = self._links.get(job_id)
         if cached and not refresh and time.time() - cached[1] < 1800:
             return cached[0]
-        link = Premiumize(common.api_token()).link(job_id)
+        with self.lock:
+            src_link = (self.jobs.get(job_id) or {}).get('src_link')
+        link, chunks = sources.resolve(job_id, src_link)
         self._links[job_id] = (link, time.time())
+        self._chunks[job_id] = chunks
         return link
 
     # ------------------------------------------------------------- commands
@@ -207,7 +211,7 @@ class Manager(object):
                     'dest': dest, 'part': dest + '.part', 'status': 'queued', 'written': 0,
                     'error': None, 'added': time.time(), 'finished': None, 'prio': prio,
                     'subs': it.get('subs') or [], 'sub_paths': [], 'retries': 0, 'retry_at': None,
-                    'cloud_path': it.get('cloud_path', ''),
+                    'cloud_path': it.get('cloud_path', ''), 'src_link': it.get('src_link'),
                 }
                 self.jobs[job_id]['written'] = self._part_size(self.jobs[job_id])
                 prio += 1
@@ -408,10 +412,20 @@ class Manager(object):
             if runner.stopping:
                 raise engine.Stopped()
 
+            connections = max(1, min(16, common.setting_int('connections', 8)))
+            if sources.is_rd(job_id):
+                self.link(job_id, refresh=True)     # also tells how many connections Real-Debrid allows
+                chunks = self._chunks.get(job_id) or 0
+                if 2 <= chunks < connections:
+                    common.log('%s: Real-Debrid allows %d connections' % (name, chunks))
+                    connections = chunks
+            if runner.stopping:
+                raise engine.Stopped()
+
             sink = engine.FileSink(part, resume=True)
             dl = engine.Downloader(
                 lambda refresh: self.link(job_id, refresh), sink, size=size,
-                connections=max(1, min(16, common.setting_int('connections', 8))),
+                connections=connections, service=sources.service_name(job_id),
                 max_buffer=max(32, common.setting_int('buffer_mb', 192)) * engine.MB,
                 max_rate=max(0, common.setting_int('max_speed', 0)) * engine.MB,
                 log=lambda m: common.log('%s: %s' % (name, m)))   # rare events only: worth keeping in the log
@@ -435,7 +449,7 @@ class Manager(object):
                 self._stopped(runner)
                 return
             permanent = getattr(exc, 'permanent', False) or getattr(exc, 'code', None) in (
-                'authentication_failed', 'not_found', 'no_key', 'permission_denied')
+                'authentication_failed', 'not_found', 'no_key', 'permission_denied', 'file_unavailable')
             self._failed(job_id, str(exc), permanent)
         except Exception as exc:
             common.log('job %s crashed: %s' % (name, traceback.format_exc()))
@@ -447,7 +461,7 @@ class Manager(object):
             target = os.path.join(folder, common.safe_name(sub['target']))
             if not os.path.exists(target):
                 try:
-                    link = Premiumize(common.api_token()).link(sub['id'])
+                    link, _chunks = sources.resolve(sub['id'], sub.get('src_link'))
                     req = urllib.request.Request(link, headers={'User-Agent': engine.USER_AGENT})
                     with urllib.request.urlopen(req, timeout=30) as resp:
                         data = resp.read(20 * 1024 * 1024)

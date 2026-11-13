@@ -21,8 +21,10 @@ FRIENDLY = {
 
 
 class ApiError(Exception):
-    def __init__(self, message, code=None):
-        Exception.__init__(self, FRIENDLY.get(code, message))
+    def __init__(self, message, code=None, exact=False):
+        # exact: the message is already written for the user (Real-Debrid errors use
+        # the same codes, but premiumize's texts would name the wrong service).
+        Exception.__init__(self, message if exact else FRIENDLY.get(code, message))
         self.code = code
 
 

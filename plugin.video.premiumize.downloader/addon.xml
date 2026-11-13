@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.premiumize.downloader" name="Premiumize Downloader" version="1.0.14" provider-name="justvibez97">
+<addon id="plugin.video.premiumize.downloader" name="Debrid Downloader" version="1.1.0" provider-name="justvibez97">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
@@ -8,14 +8,15 @@
     </extension>
     <extension point="xbmc.service" library="service.py"/>
     <extension point="xbmc.addon.metadata">
-        <summary lang="en_GB">Download your premiumize.me cloud files at full speed and play them locally</summary>
-        <description lang="en_GB">Browse your premiumize.me cloud, download videos over several parallel connections, start watching while they download, and play them from local or USB storage. Downloads resume after restarts, and subtitles next to a video come along with it.</description>
-        <disclaimer lang="en_GB">Needs a premiumize.me account. Not made by or affiliated with premiumize.me.</disclaimer>
+        <summary lang="en_GB">Download your premiumize.me and Real-Debrid files at full speed and play them locally</summary>
+        <description lang="en_GB">Browse your premiumize.me cloud and Real-Debrid torrents, download videos over several parallel connections, start watching while they download, and play them from local or USB storage. Downloads resume after restarts, and subtitles next to a video come along with it.</description>
+        <disclaimer lang="en_GB">Needs a premiumize.me or Real-Debrid account. Not made by or affiliated with either service.</disclaimer>
         <platform>all</platform>
         <license>MIT</license>
         <website>https://github.com/justvibez97/kodi-addons</website>
         <source>https://github.com/justvibez97/kodi-addons</source>
-        <news>1.0.14: Storage in the main menu: a gauge of how full the download drive is and how much is free. Select it for details (folder, total, space taken by your downloads) or to change the folder.
+        <news>1.1.0: Real-Debrid support, and the add-on is now called Debrid Downloader. Sign in with a code from the main menu ("Add Real-Debrid"), then "Real-Debrid torrents" lists your torrents: download, play while downloading, stream, speed test and delete work as they do for premiumize. Search looks in both. premiumize settings and downloads are unchanged.
+1.0.14: Storage in the main menu: a gauge of how full the download drive is and how much is free. Select it for details (folder, total, space taken by your downloads) or to change the folder.
 1.0.13: "Delete from premiumize cloud" in the long-press menu of cloud files and folders. Asks first, keeps copies already downloaded, and cancels unfinished downloads of what is deleted.
 1.0.12: A finished download whose file was deleted counts as not downloaded: selecting it asks again (Play now / Download / Stream) instead of quietly downloading the whole file again.
 1.0.11: Playback gets a clean title, year and type read from the release name (movie "Ran" (1985), or show, season and episode), so the Trakt add-on can scrobble downloads and Play now. Finished files in Downloads play through the add-on for the same reason.

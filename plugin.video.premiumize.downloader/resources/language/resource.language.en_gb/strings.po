@@ -1,5 +1,5 @@
 # Kodi Media Center language file
-# Addon Name: Premiumize Downloader
+# Addon Name: Debrid Downloader
 # Addon id: plugin.video.premiumize.downloader
 msgid ""
 msgstr ""
@@ -9,7 +9,7 @@ msgstr ""
 "
 
 msgctxt "#30100"
-msgid "Account"
+msgid "premiumize.me"
 msgstr ""
 
 msgctxt "#30101"
@@ -46,6 +46,34 @@ msgstr ""
 
 msgctxt "#30115"
 msgid "OAuth token"
+msgstr ""
+
+msgctxt "#30120"
+msgid "Real-Debrid"
+msgstr ""
+
+msgctxt "#30121"
+msgid "Sign in with a code..."
+msgstr ""
+
+msgctxt "#30122"
+msgid "Check account"
+msgstr ""
+
+msgctxt "#30123"
+msgid "Sign out"
+msgstr ""
+
+msgctxt "#30124"
+msgid "Private API token (instead of signing in)"
+msgstr ""
+
+msgctxt "#30125"
+msgid "Optional. From real-debrid.com/apitoken. Signing in with a code is easier on a TV and is used when both are set."
+msgstr ""
+
+msgctxt "#30129"
+msgid "Internal"
 msgstr ""
 
 msgctxt "#30200"

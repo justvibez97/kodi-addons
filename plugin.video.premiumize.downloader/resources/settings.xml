@@ -67,6 +67,87 @@
                 </setting>
             </group>
         </category>
+        <category id="realdebrid" label="30120">
+            <group id="1">
+                <setting id="rd_pair" type="action" label="30121">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://plugin.video.premiumize.downloader/?action=rd_pair)</data>
+                    <control type="button" format="action">
+                        <close>true</close>
+                    </control>
+                </setting>
+                <setting id="rd_account" type="action" label="30122">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://plugin.video.premiumize.downloader/?action=rd_account)</data>
+                    <control type="button" format="action">
+                        <close>true</close>
+                    </control>
+                </setting>
+                <setting id="rd_unpair" type="action" label="30123">
+                    <level>0</level>
+                    <data>RunPlugin(plugin://plugin.video.premiumize.downloader/?action=rd_unpair)</data>
+                    <dependencies>
+                        <dependency type="visible">
+                            <condition operator="!is" setting="rd_refresh"></condition>
+                        </dependency>
+                    </dependencies>
+                    <control type="button" format="action">
+                        <close>true</close>
+                    </control>
+                </setting>
+                <setting id="rd_api_token" type="string" label="30124" help="30125">
+                    <level>1</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string">
+                        <heading>30124</heading>
+                        <hidden>true</hidden>
+                    </control>
+                </setting>
+                <setting id="rd_client_id" type="string" label="30129">
+                    <level>4</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string"/>
+                </setting>
+                <setting id="rd_client_secret" type="string" label="30129">
+                    <level>4</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string"/>
+                </setting>
+                <setting id="rd_refresh" type="string" label="30129">
+                    <level>4</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string"/>
+                </setting>
+                <setting id="rd_token" type="string" label="30129">
+                    <level>4</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string"/>
+                </setting>
+                <setting id="rd_expires" type="string" label="30129">
+                    <level>4</level>
+                    <default/>
+                    <constraints>
+                        <allowempty>true</allowempty>
+                    </constraints>
+                    <control type="edit" format="string"/>
+                </setting>
+            </group>
+        </category>
         <category id="downloads" label="30200">
             <group id="1">
                 <setting id="choose_folder" type="action" label="30202">

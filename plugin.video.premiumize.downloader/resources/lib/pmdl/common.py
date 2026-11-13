@@ -103,17 +103,20 @@ def icon():
 
 
 def log(msg, level=xbmc.LOGINFO):
-    xbmc.log('[Premiumize DL] %s' % msg, level)
+    xbmc.log('[Debrid DL] %s' % msg, level)
 
 
 def debug(msg):
     if setting_bool('debug'):
         log(msg)
     else:
-        xbmc.log('[Premiumize DL] %s' % msg, xbmc.LOGDEBUG)
+        xbmc.log('[Debrid DL] %s' % msg, xbmc.LOGDEBUG)
 
 
-def notify(message, heading='Premiumize Downloader', ms=4000):
+NAME = 'Debrid Downloader'
+
+
+def notify(message, heading=NAME, ms=4000):
     xbmcgui.Dialog().notification(heading, message, icon(), ms, False)
 
 

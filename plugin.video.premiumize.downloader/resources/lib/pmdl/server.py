@@ -4,7 +4,7 @@
 * ``/stream/<job id>/<name>`` lets Kodi's player open a file that is still
   downloading. Bytes already on disk are served from disk; bytes that
   aren't there yet (including a seek far ahead) are fetched straight from
-  premiumize, while the download keeps running.
+  the cloud service, while the download keeps running.
 * ``/api/...`` is how the plugin side (a separate Kodi Python instance)
   talks to the download queue.
 """
@@ -65,7 +65,7 @@ class _ClientGone(Exception):
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
-    server_version = 'PremiumizeDL/1.0'
+    server_version = 'DebridDL/1.1'
     timeout = 20            # idle keep-alive connections end after this
     manager = None
     token = None
@@ -230,7 +230,7 @@ class Handler(BaseHTTPRequestHandler):
 
                 if remote is None:
                     # Not on disk yet. Wait if the download is about to get here,
-                    # otherwise read this part straight from premiumize.
+                    # otherwise read this part straight from the cloud.
                     if src.downloading():
                         now = time.time()
                         waiting_since = waiting_since or now
@@ -254,7 +254,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 class _Remote(object):
-    """A ranged read from premiumize for bytes the download hasn't reached."""
+    """A ranged read from the cloud for bytes the download hasn't reached."""
 
     def __init__(self, src, start, end):
         self.conn = engine.Connection(timeout=30)
@@ -276,7 +276,7 @@ class _Remote(object):
                 continue
             if resp.status != 206 and start > 0:
                 self.conn.close()
-                raise engine.DownloadError('premiumize ignored the byte range')
+                raise engine.DownloadError('the cloud server ignored the byte range')
             self.resp = resp
             return
         raise last
@@ -284,7 +284,7 @@ class _Remote(object):
     def read(self, n):
         data = self.resp.read(n)
         if not data:
-            raise engine.DownloadError('premiumize closed the stream')
+            raise engine.DownloadError('the cloud server closed the stream')
         return data
 
     def close(self):
