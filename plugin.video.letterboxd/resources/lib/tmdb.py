@@ -7,6 +7,7 @@ Results are cached to avoid repeated lookups across sessions.
 """
 import json
 import os
+import re
 import threading
 import time
 
@@ -49,6 +50,22 @@ class TMDBClient:
 
         name = film.get("name", "")
         year = str(film.get("year") or "")
+
+        tmdb_id = str(film.get("tmdb_id") or "")
+        if tmdb_id:
+            # Exact ID already known (Trakt items): look it up directly. A title
+            # search can land on a different film with the same name.
+            key = f"id|{tmdb_id}"
+            data = self._get_entry(key)
+            if data is None:
+                data = self._by_id(tmdb_id)
+                if data:
+                    self._set_entry(key, data)
+            if data:
+                # Never blank out an ID or year the caller already had.
+                film.update({k: v for k, v in data.items() if v not in ("", None)})
+            return film
+
         if not name:
             return film
 
@@ -470,6 +487,74 @@ class TMDBClient:
         with self._cache_lock:
             self._cache[self._cache_key(name, year)] = {"ts": time.time(), "data": data}
         self._save_cache()
+
+    def _get_entry(self, key, ttl=_CACHE_TTL):
+        entry = self._cache.get(key)
+        if not entry or time.time() - entry.get("ts", 0) > ttl:
+            return None
+        return entry.get("data")
+
+    def _set_entry(self, key, data):
+        with self._cache_lock:
+            self._cache[key] = {"ts": time.time(), "data": data}
+        self._save_cache()
+
+    def _by_id(self, tmdb_id):
+        """Film details for an exact TMDb ID, in the same shape as _search()."""
+        try:
+            resp = self._session.get(
+                f"{_BASE}/movie/{tmdb_id}",
+                params={"api_key": self.api_key, "language": "en-US"},
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                return None
+            d = resp.json()
+        except Exception:
+            return None
+        poster_path = d.get("poster_path") or ""
+        release = d.get("release_date") or ""
+        try:
+            rating = float(d.get("vote_average") or 0) or None
+        except (TypeError, ValueError):
+            rating = None
+        return {
+            "tmdb_id":     str(d.get("id") or tmdb_id),
+            "imdb_id":     d.get("imdb_id") or "",
+            "poster":      f"{_IMG_BASE}{poster_path}" if poster_path else "",
+            "description": d.get("overview") or "",
+            "tmdb_rating": rating,
+            "year":        release[:4] if release[:4].isdigit() else "",
+        }
+
+    def letterboxd_slug_for(self, tmdb_id):
+        """
+        The Letterboxd slug for a TMDb ID, from letterboxd.com/tmdb/<id>/ (which
+        redirects to the film's page). Lets Trakt items get the Letterboxd rating
+        and work with the "watched on Letterboxd" filter. Cached; "" when
+        Letterboxd has no such film.
+        """
+        key = f"lbslug|{tmdb_id}"
+        cached = self._get_entry(key)
+        if cached is not None:
+            return cached
+        try:
+            from resources.lib.letterboxd_rss import _HEADERS
+            resp = requests.get(
+                f"https://letterboxd.com/tmdb/{tmdb_id}/",
+                headers=_HEADERS, timeout=15, allow_redirects=False,
+            )
+        except Exception:
+            return ""   # network trouble: don't cache, try again next time
+        m = re.match(r"^(?:https://letterboxd\.com)?/film/([^/]+)/", resp.headers.get("Location", ""))
+        if resp.status_code in (301, 302) and m:
+            slug = m.group(1)
+        elif resp.status_code == 404:
+            slug = ""
+        else:
+            return ""   # blocked or unexpected: don't cache
+        self._set_entry(key, slug)
+        return slug
 
     def _load_cache(self):
         if os.path.exists(self.cache_path):

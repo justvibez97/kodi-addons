@@ -191,6 +191,10 @@ def _enrich_and_add(films, fetch_lb_rating=True):
 
     def _enrich_one(film):
         """Enrich a single film — safe to run concurrently across films."""
+        if not film.get("id") and film.get("tmdb_id"):
+            # Trakt items: find the Letterboxd page so the Letterboxd rating and
+            # the "watched on Letterboxd" filter work as for Letterboxd items.
+            film["id"] = tmdb.letterboxd_slug_for(film["tmdb_id"])
         tmdb.enrich(film)
         if is_watched and is_watched(film):
             film["playcount"] = 1
@@ -258,7 +262,8 @@ def show_main_menu():
         return
 
     items = [
-        ("Watchlist",     url_for("watchlist"),     "DefaultVideoPlaylists.png"),
+        ("Letterboxd Watchlist", url_for("watchlist"),       "DefaultVideoPlaylists.png"),
+        ("Trakt Watchlist",      url_for("trakt_watchlist"), "DefaultVideoPlaylists.png"),
         ("Browse Lists",  url_for("public_lists"),  "DefaultVideoPlaylists.png"),
         ("Diary",         url_for("diary"),          "DefaultRecentlyAddedMovies.png"),
         ("My Lists",      url_for("lists"),          "DefaultVideoPlaylists.png"),
@@ -290,7 +295,35 @@ def show_watchlist():
     _enrich_and_add(films)
     _append_next("watchlist", current_page, has_next)
     xbmcplugin.setContent(HANDLE, "movies")
-    xbmcplugin.setPluginCategory(HANDLE, "Watchlist")
+    xbmcplugin.setPluginCategory(HANDLE, "Letterboxd Watchlist")
+    end_of_directory(HANDLE)
+
+
+def show_trakt_watchlist():
+    """Your Trakt watchlist, shown and played like the Letterboxd one."""
+    from resources.lib import trakt
+
+    current_page = int(param("page", 1))
+    try:
+        films, has_next = trakt.get_watchlist(page=current_page, page_size=page_size())
+    except trakt.TraktNotConnected:
+        notify_error("Trakt Watchlist",
+                     "Trakt isn't connected on this device. Authorise the Trakt add-on, then try again.")
+        end_of_directory(HANDLE, False)
+        return
+    except Exception as exc:
+        notify_error("Trakt Watchlist", str(exc))
+        log(f"Trakt watchlist: {exc}", xbmc.LOGERROR)
+        end_of_directory(HANDLE, False)
+        return
+
+    if not films and current_page == 1:
+        notify("Trakt Watchlist", "Your Trakt watchlist is empty.")
+
+    _enrich_and_add(films)
+    _append_next("trakt_watchlist", current_page, has_next)
+    xbmcplugin.setContent(HANDLE, "movies")
+    xbmcplugin.setPluginCategory(HANDLE, "Trakt Watchlist")
     end_of_directory(HANDLE)
 
 
@@ -784,6 +817,7 @@ def play_film():
 _ROUTES = {
     "main":              show_main_menu,
     "watchlist":         show_watchlist,
+    "trakt_watchlist":   show_trakt_watchlist,
     "diary":             show_diary,
     "lists":             show_lists,
     "list_entries":      show_list_entries,
